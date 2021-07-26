@@ -1,21 +1,30 @@
 DIST_FOLDER=./dist
+.DEFAULT_GOAL := help
 
+FORCE: help
 
+all: directory ## Build package with binary distribution and config
 
-all: FORCE ## Build package with binary distribution and config
-all: directory
+all: FORCE ## This is a library, nothing to build
 
+test: FORCE ## Run tests (stop on first error, don't run parallel)
+		go test -failfast -p 1 -v ./pkg/...
+
+install:  ## Install the plugin into ~/bin/wost/bin and config
+	cp dist/bin/* ~/bin/wost/bin/
+	cp -n dist/config/* ~/bin/wost/config/
 
 clean: ## Clean distribution files
-	$(GOCLEAN)
+	go mod tidy
+	go clean
 	rm -f $(DIST_FOLDER)/certs/*
 	rm -f $(DIST_FOLDER)/logs/*
 	rm -f $(DIST_FOLDER)/bin/*
 	rm -f $(DIST_FOLDER)/arm/*
 
 directory:
-	GOOS=linux GOARCH=amd64 go build -o $(DIST_FOLDER)/bin/$@ ./main.go
-	GOOS=linux GOARCH=arm go build -o $(DIST_FOLDER)/arm/$@ ./main.go
+	GOOS=linux go build -o $(DIST_FOLDER)/bin/$@ ./main.go
 	@echo "> SUCCESS. Plugin '$@' can be found at $(DIST_FOLDER)/bin/$@ and $(DIST_FOLDER)/arm/$@"
 
-FORCE:
+help: ## Show this help
+		@grep -E '^[a-zA-Z0-9_-]+:.*?## .*$$' $(MAKEFILE_LIST) | sort | awk 'BEGIN {FS = ":.*?## "}; {printf "\033[36m%-20s\033[0m %s\n", $$1, $$2}'
