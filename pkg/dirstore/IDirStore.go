@@ -20,7 +20,7 @@ type IDirStore interface {
 
 	// Query for documents using JSONPATH
 	// Returns list of documents by their ID, or error if jsonPath is invalid
-	Query(jsonPath string) ([]interface{}, error)
+	Query(jsonPath string) (interface{}, error)
 
 	// Read a document by its ID
 	// Returns an error if it doesn't exist

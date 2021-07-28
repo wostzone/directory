@@ -1,4 +1,4 @@
-package internal
+package dirserver
 
 import (
 	"time"
@@ -46,8 +46,6 @@ func (srv *DirectoryServer) Address() string {
 }
 
 // Start the server.
-// On systems with multiple addresses, the address with the default outbound interface is used.
-// If DNS-SD discovery cannot be started at this time then it can be started later with ServeDiscovery()
 func (srv *DirectoryServer) Start() error {
 	var err error
 
@@ -72,12 +70,12 @@ func (srv *DirectoryServer) Start() error {
 			return err
 		}
 		// setup the handlers for the paths
-		srv.tlsServer.AddHandler(RouteUpdateTD, srv.ServeUpdateTD)
-		srv.tlsServer.AddHandler(RouteGetTD, srv.ServeGetTD)
-		srv.tlsServer.AddHandler(RouteDeleteTD, srv.ServeDeleteTD)
-		srv.tlsServer.AddHandler(RoutePatchTD, srv.ServePatchTD)
-		srv.tlsServer.AddHandler(RouteListTD, srv.ServeListTD)
-		srv.tlsServer.AddHandler(RouteQueryTD, srv.ServeQueryTD)
+		// srv.tlsServer.AddHandler(RouteUpdateTD, srv.ServeUpdateTD)
+		// srv.tlsServer.AddHandler(RouteGetTD, srv.ServeGetTD)
+		// srv.tlsServer.AddHandler(RouteDeleteTD, srv.ServeDeleteTD)
+		// srv.tlsServer.AddHandler(RoutePatchTD, srv.ServePatchTD)
+		// srv.tlsServer.AddHandler(RouteListTD, srv.ServeListTD)
+		// srv.tlsServer.AddHandler(RouteQueryTD, srv.ServeQueryTD)
 
 		if srv.discoveryType != "" {
 			directoryPath := RouteGetTD
@@ -102,6 +100,7 @@ func (srv *DirectoryServer) Stop() {
 }
 
 // Create a new instance of the IoT Device Provisioning Server
+//  storePath is the location of the directory storage file
 //  instanceID is the unique ID for this service used in discovery and communication
 //  address the server listening address. Must use the same address as the services
 //  port server listening port
@@ -110,6 +109,7 @@ func (srv *DirectoryServer) Stop() {
 
 func NewDirectoryServer(
 	instanceID string,
+	storePath string,
 	address string,
 	port uint,
 	caCertFolder string,
@@ -125,7 +125,7 @@ func NewDirectoryServer(
 		discoveryType: discoveryType,
 		instanceID:    instanceID,
 		port:          port,
-		store:         dirfilestore.NewDirFileStore(),
+		store:         dirfilestore.NewDirFileStore(storePath),
 	}
 	return &srv
 }

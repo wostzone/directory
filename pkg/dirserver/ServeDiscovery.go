@@ -7,6 +7,7 @@ import (
 	"github.com/grandcat/zeroconf"
 	"github.com/sirupsen/logrus"
 	"github.com/wostzone/idprov-go/pkg/idprov"
+	"github.com/wostzone/wostlib-go/pkg/discovery"
 )
 
 // // Get a list of active network interfaces excluding the loopback interface
@@ -80,7 +81,7 @@ func ServeDiscovery(instanceID string, discoveryType string,
 		ips = []string{actualIP[0].String()}
 	}
 
-	ifaces, err := GetInterfaces(ips[0])
+	ifaces, err := discovery.GetInterfaces(ips[0])
 	if err != nil {
 		logrus.Warningf("ServeDiscovery: Address %s does not appear on any interface. Continuing anyways", ips[0])
 	}

@@ -1,3 +1,14 @@
+// Package dirfilestore
+// This is just a simple in-memory store that is loaded from file and written regularly after updates.
+//
+// The jsonpath query feature is provided by a library that works with the in-memory object store.
+// A good overview of implementations can be found here:
+// > https://cburgmer.github.io/json-path-comparison/
+//
+// Two good options for jsonpath queries:
+//  > github.com/ohler55/ojg/jp
+//  > github.com/PaesslerAG/jsonpath
+
 package dirfilestore
 
 import (
@@ -7,6 +18,7 @@ import (
 	"path"
 	"sync"
 
+	"github.com/ohler55/ojg/jp"
 	"github.com/sirupsen/logrus"
 )
 
@@ -130,9 +142,23 @@ func (store *DirFileStore) Open() error {
 }
 
 // Query for documents using JSONPATH
-// Returns list of documents by their ID, or error if jsonPath is invalid
-func (store *DirFileStore) Query(jsonPath string) ([]interface{}, error) {
-	return nil, fmt.Errorf("not implemented")
+// Eg `$[? @.properties.deviceType=="sensor"]`
+func (store *DirFileStore) Query(jsonPath string) (interface{}, error) {
+	//  "github.com/PaesslerAG/jsonpath" - just works, amazing!
+	// Unfortunately no filter with bracket notation $[? @.["title"]=="my title"]
+	// res, err := jsonpath.Get(jsonPath, store.docs)
+	// github.com/ohler55/ojg/jp - seems to work with in-mem maps, no @token in bracket notation
+	jpExpr, err := jp.ParseString(jsonPath)
+	if err != nil {
+		return nil, err
+	}
+	res := jpExpr.Get(store.docs)
+
+	// The following parsers don't work on an in-memory store :/
+	//  They would need to parse the whole tree after each update.
+	// github.com/vmware-labs/yaml-jsonpath - requires a yaml node
+
+	return res, err
 }
 
 // Read a document by its ID

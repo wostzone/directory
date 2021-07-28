@@ -7,7 +7,7 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
-// Generic directory store testcases
+// Generic directory store testcases, invoked by specific implementation (eg dirfilestore)
 func DirStoreStartStop(t *testing.T, store IDirStore) {
 	err := store.Open()
 	assert.NoError(t, err)

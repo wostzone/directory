@@ -1,4 +1,4 @@
-package internal_test
+package dirserver_test
 
 import (
 	"os"
@@ -9,11 +9,13 @@ import (
 
 	"github.com/sirupsen/logrus"
 	"github.com/stretchr/testify/assert"
-	"github.com/wostzone/directory/internal"
+	"github.com/wostzone/wostdir/pkg/dirclient"
+	"github.com/wostzone/wostdir/pkg/dirserver"
 	"github.com/wostzone/wostlib-go/pkg/certsetup"
 	"github.com/wostzone/wostlib-go/pkg/hubconfig"
 )
 
+const testDirectoryAddr = "localhost"
 const testDirectoryPort = 9990
 const testDirectoryServiceID = "directory"
 const testDiscoveryType = "_test._wost_directory._tcp"
@@ -23,9 +25,8 @@ var serverCertFolder string
 var certStoreFolder string
 var clientCertFolder string
 
-var directoryTestAddr string
 var homeFolder string
-var directoryServer *internal.DirectoryServer
+var directoryServer *dirserver.DirectoryServer
 
 // easy cleanup for existing device certificate
 func removeDeviceCerts() {
@@ -49,12 +50,13 @@ func TestMain(m *testing.M) {
 	homeFolder = path.Join(cwd, "../../test")
 	serverCertFolder = path.Join(homeFolder, "certs")
 	certStoreFolder = path.Join(homeFolder, "certstore")
+	storePath := path.Join(homeFolder, "config")
 
 	// Start test with new certificates
 	logrus.Infof("Creating certificate bundle for names: %s", hostnames)
 	certsetup.CreateCertificateBundle(hostnames, serverCertFolder)
 
-	directoryServer = internal.NewDirectoryServer(testDirectoryServiceID, address,
+	directoryServer = dirserver.NewDirectoryServer(testDirectoryServiceID, storePath, address,
 		testDirectoryPort, serverCertFolder, testDiscoveryType)
 	directoryServer.Start()
 	// testDirectoryAddr := directoryServer.Address()
@@ -65,13 +67,21 @@ func TestMain(m *testing.M) {
 }
 
 func TestStartStop(t *testing.T) {
-	// start without existing client cert
-	// deviceID1 := "device1"
-	dirClient := directory.NewDirectoryClient(testDirectoryAddr, testDirectoryPort)
+	dirClient := dirclient.NewDirClient(testDirectoryAddr, testDirectoryPort)
 
 	// Client start only succeeds if server is running
-	err := dirClient.Start()
+	err := dirClient.Open()
 	assert.NoError(t, err)
 
-	dirClient.Stop()
+	dirClient.Close()
+}
+
+func TestQuery(t *testing.T) {
+	dirClient := dirclient.NewDirClient(testDirectoryAddr, testDirectoryPort)
+
+	// Client start only succeeds if server is running
+	err := dirClient.Open()
+	assert.NoError(t, err)
+
+	dirClient.Close()
 }
