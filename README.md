@@ -1,16 +1,20 @@
 # Thing Directory Service 
 
-Golang implementation of a Thing Directory Service plugin for the WoST Hub.
+Golang implementation of a Thing Directory Service client and server library.
 
 ## Objective
 
-Provide a WoST Hub plugin for registering Thing Descriptions and let consumers query these.
+Provide a service for registering Thing Descriptions, compatible with the WoT specification for directory services.
 
 
 ## Status
 
-The status of this plugin is Under Development. 
-This initial version is intended for local Hubs to track available things.
+The status of this library is Alpha. 
+This initial MVP version is intended for the Wost Hub directory protocol binding, but it is designed to be usable outside of WoST.
+
+Still to do:
+* authentication hook
+* authorization hook
 
 
 ## Audience
@@ -185,7 +189,7 @@ The parameters governing the mitigation can be defined in the service configurat
 
 ### System Requirements
 
-This plugin runs as part of the WoST hub. It has no additional requirements other than a working hub.
+This is a stand-alone library intended to be used by WoST. It uses the wostlib-go library but is has otherwise no other dependencies on WoST.
 
 ### Manual Installation
 
@@ -206,21 +210,57 @@ When successful, the plugin can be found in dist/bin. An example configuration f
 
 ## Usage
 
-Like all WoST plugins, it can be run from the commandline or via the WoST hub as long as it can find the hub.yaml configuration, needed to connect to the message bus.
-The plugin loads the hub configuration and the plugin configuration to determine how to connect to the hub and configure plugin specific settings.
+This is a library intended to be used with an application that handles authentication and authorization. See also the thingdir-pb protocol binding that is included in the WoST Hub core.
 
-Once started consumers can use the service API to query discovered Things and subscribe to events.
+Currently a file based backend is supported. Additional backends can be added in the future.
+
+
+Starting and stopping the server:
+
+```golang 
+  import "github.com/wostzone/thingdir/pkg/dirserver"
+  import "github.com/wostzone/wostlib-go/pkg/hubnet"
+
+
+  instanceID := "mydirserver"
+  serviceDiscoveryName := "thingdir"
+  storeFolder := "./config"      // use your own folder to store the directory files
+  serverAddress := hubnet.GetOutboundIP("").String()
+  serverPort := "9999"
+  serverCertPath := "certs/serverCert.pem"
+  serverKeyPath := "certs/serverKey.pem"
+  caCertPath := "certs/caCert.pem"
+  authenticationHook := nil // your login/password authentication function
+  authorizationHook := nil  // your authorization function
+
+	directoryServer = dirserver.NewDirectoryServer(
+		instanceID, 
+    storeFolder, 
+    serverAddress, serverPort,
+		serviceDiscoveryName, 
+    serverCertPath, serverKeyPath, 
+    caCertPath,
+    authenticationHook,
+    authorizationHook )
+	directoryServer.Start()
+
+  // do stuff
+  directoryServer.Stop()
+```
+
 
 ### Authentication
 
-Authentication and access control follows the standard Hub authentication and authorization method:
+The directory server supports TLS mutual certificate authentication out of the box. If the client does not have a valid client certificate then the authentication callback is invoked, which is typically loginID and password based.
 
-Two authentication methods can be used:
- 1. A valid certificate 
- 2. A valid username/password login as for the mosquitto message bus
+<todo>
 
- For authorization, ACL restricts access to Things that are in the same group as the user.
- 
- Full administration rights is available to certificate holders with the admin OU.
+
+### Authorization
+
+The service supports a callback for authorizing a read, update or delete action on a TD document.
+
+
+<todo>
 
 

@@ -10,11 +10,14 @@ import (
 	"github.com/wostzone/wostlib-go/pkg/tlsclient"
 )
 
-// Directory service name, used for discovery
-const DirectoryServiceName = "thingdir"
+// Constants for use by server and applications
+const (
+	DefaultServiceName = "thingdir" // default discovery service name _{name}._tcp
+	DefaultPort        = 43777      // default directory server listening port
+)
 
 // paths with REST commands
-const RouteThings = "/things"            // list or query
+const RouteThings = "/things"            // list or query path
 const RouteThingID = "/things/{thingID}" // for methods get, post, patch, delete
 
 // query parameters
@@ -23,7 +26,7 @@ const ParamLimit = "limit"
 const ParamQuery = "queryparams"
 
 const DefaultLimit = 100
-const MaxLimit = 100
+const MaxLimit = 1000
 
 // DirClient is a client for the WoST Directory service
 // Intended for updating and reading TDs

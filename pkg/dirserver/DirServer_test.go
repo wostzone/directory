@@ -17,8 +17,8 @@ import (
 )
 
 const testDirectoryPort = 9990
-const testDirectoryServiceID = "directory"
-const testDiscoveryType = "_test._wost_directory._tcp"
+const testDirectoryServiceInstanceID = "directory"
+const testServiceDiscoveryName = "thingdir"
 
 // These are set in TestMain
 var serverCertFolder string
@@ -73,8 +73,8 @@ func TestMain(m *testing.M) {
 	pluginKeyPath = path.Join(serverCertFolder, certsetup.PluginKeyFile)
 
 	directoryServer = dirserver.NewDirectoryServer(
-		testDirectoryServiceID, storePath, serverAddress, testDirectoryPort,
-		testDiscoveryType, serverCertPath, serverKeyPath, caCertPath)
+		testDirectoryServiceInstanceID, storePath, serverAddress, testDirectoryPort,
+		testServiceDiscoveryName, serverCertPath, serverKeyPath, caCertPath)
 	directoryServer.Start()
 
 	res := m.Run()
