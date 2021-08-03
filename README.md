@@ -1,6 +1,6 @@
-# WoST Directory Service 
+# Thing Directory Service 
 
-Golang implementation of a Directory Service plugin for the WoST Hub.
+Golang implementation of a Thing Directory Service plugin for the WoST Hub.
 
 ## Objective
 
@@ -9,13 +9,14 @@ Provide a WoST Hub plugin for registering Thing Descriptions and let consumers q
 
 ## Status
 
-The status of this plugin is Under Development.
-This initial version is intended for local Hubs with fewer than 1000 Things to register.
+The status of this plugin is Under Development. 
+This initial version is intended for local Hubs to track available things.
 
 
 ## Audience
 
 This project is aimed at IoT developers that value the security and interoperability that WoST brings.
+WoST Things are more secure than traditional IoT devices as they do not run a server, but instead connect to a Hub to publish their information and receive actions. 
 
 
 ## Dependencies
@@ -129,7 +130,7 @@ Content-Type: application/td+json
 Example limit nr of results to 10
 
 ```http
-HTTP GET https://server:port/things?limit=10
+HTTP GET https://server:port/things?offset=10&limit=10
 200 (OK)
 Content-Type: application/ld+json
 Link: </things?offset=10>; rel="next"
@@ -154,7 +155,7 @@ JSONPATH queries are supported as follows:
 Example search
 
 ```http
-HTTP GET https://server:port/things?queryparams
+HTTP GET https://server:port/things?queryparams=""
 200 (OK)
 Content-Type: application/json
 [{TD},...]

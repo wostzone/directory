@@ -1,0 +1,110 @@
+package dirserver
+
+import (
+	"encoding/json"
+	"fmt"
+	"io/ioutil"
+	"net/http"
+	"strings"
+
+	"github.com/sirupsen/logrus"
+)
+
+// ServeThingID serves a request for a particular Thing by its ID
+// This splits the request by its REST method: GET, POST, PUT, PATCH, DELETE
+func (srv *DirectoryServer) ServeThingByID(response http.ResponseWriter, request *http.Request) {
+	// determine the ID
+	parts := strings.Split(request.URL.Path, "/")
+	thingID := parts[len(parts)-1] // expect the thing ID
+	logrus.Infof("ServeThingByID: %s for TD with ID %s", request.Method, thingID)
+	switch request.Method {
+	case "GET":
+		srv.ServeGetTD(thingID, response)
+	case "PATCH":
+		srv.ServePatchTD(thingID, response, request)
+	case "POST":
+		srv.ServeReplaceTD(thingID, response, request)
+	case "PUT":
+		srv.ServeReplaceTD(thingID, response, request)
+	case "DELETE":
+		srv.ServeDeleteTD(thingID, response)
+	default:
+		srv.tlsServer.WriteBadRequest(response, fmt.Sprintf("Invalid method %s", request.Method))
+	}
+}
+
+// serveGetThing retrieve the requested TD
+func (srv *DirectoryServer) ServeGetTD(thingID string, response http.ResponseWriter) {
+
+	td, err := srv.store.Get(thingID)
+	if err != nil {
+		msg := fmt.Sprintf("ServeGetTD: Unknown Thing with ID '%s'", thingID)
+		srv.tlsServer.WriteNotFound(response, msg)
+		return
+	}
+	msg, err := json.Marshal(td)
+	if err != nil {
+		msg := fmt.Sprintf("ServeGetTD: Unable to marshal thing with ID %s", thingID)
+		srv.tlsServer.WriteInternalError(response, msg)
+		return
+	}
+	response.Write(msg)
+}
+
+// ServeDeleteTD deletes the requested TD
+func (srv *DirectoryServer) ServeDeleteTD(thingID string, response http.ResponseWriter) {
+
+	err := srv.store.Remove(thingID)
+	if err != nil {
+		msg := fmt.Sprintf("ServeDeleteTD: '%s'", err)
+		srv.tlsServer.WriteUnauthorized(response, msg)
+		return
+	}
+	// should we return the original? no, return 204
+}
+
+// ServeUpdateThing update only the provided parts of a thing's TD
+func (srv *DirectoryServer) ServePatchTD(thingID string, response http.ResponseWriter, request *http.Request) {
+	td := make(map[string]interface{})
+	body, err := ioutil.ReadAll(request.Body)
+
+	if err == nil {
+		err = json.Unmarshal(body, &td)
+		if err != nil {
+			srv.tlsServer.WriteBadRequest(response, fmt.Sprintf("ServePatchTD: %s", err))
+			return
+		}
+	}
+	err = srv.store.Patch(thingID, td)
+	if err != nil {
+		srv.tlsServer.WriteBadRequest(response, fmt.Sprintf("ServePatchTD: %s", err))
+		return
+	}
+}
+
+// Create or replace a TD
+func (srv *DirectoryServer) ServeReplaceTD(thingID string, response http.ResponseWriter, request *http.Request) {
+	td := make(map[string]interface{})
+	body, err := ioutil.ReadAll(request.Body)
+
+	if err == nil {
+		err = json.Unmarshal(body, &td)
+		if err != nil {
+			srv.tlsServer.WriteBadRequest(response, fmt.Sprintf("ServeReplaceTD: %s", err))
+			return
+		}
+	}
+	existingTD, _ := srv.store.Get(thingID)
+
+	err = srv.store.Replace(thingID, td)
+	if err != nil {
+		srv.tlsServer.WriteBadRequest(response, fmt.Sprintf("ServeReplaceTD: %s", err))
+		return
+	} else if existingTD != nil {
+		// return 200 (OK)
+		// default
+	} else {
+		// return 201 (Created)
+		response.WriteHeader(http.StatusCreated)
+	}
+}

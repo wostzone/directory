@@ -16,8 +16,10 @@ import (
 	"fmt"
 	"os"
 	"path"
+	"sort"
 	"sync"
 
+	"github.com/imdario/mergo"
 	"github.com/ohler55/ojg/jp"
 	"github.com/sirupsen/logrus"
 )
@@ -31,6 +33,7 @@ type DirFileStore struct {
 	storePath string
 	running   bool
 	mutex     sync.Mutex
+	maxLimit  int // default maximum for the limit value in list and queries
 }
 
 func createStoreFile(filePath string) error {
@@ -79,9 +82,9 @@ func readStoreFile(storePath string) (docs map[string]interface{}, err error) {
 	return docs, err
 }
 
-// saveStoreFile writes the store to file
-func saveStoreFile(storePath string, docs map[string]interface{}) error {
-	rawData, err := json.Marshal(docs)
+// writeStoreFile writes the store to file
+func writeStoreFile(storePath string, docs map[string]interface{}) error {
+	rawData, err := json.MarshalIndent(docs, "  ", "  ")
 	if err == nil {
 		// only allow this user access
 		err = os.WriteFile(storePath, rawData, 0600)
@@ -97,29 +100,44 @@ func (store *DirFileStore) Close() {
 	store.mutex.Lock()
 	defer store.mutex.Unlock()
 	if store.changed {
-		saveStoreFile(store.storePath, store.docs)
+		writeStoreFile(store.storePath, store.docs)
 	}
 	store.running = false
 }
 
-// Create a document
-// Returns an error if it already exists
-func (store *DirFileStore) Create(id string, document interface{}) error {
+// Get a document by its ID
+// Returns an error if it doesn't exist
+func (store *DirFileStore) Get(id string) (interface{}, error) {
 	store.mutex.Lock()
 	defer store.mutex.Unlock()
-	store.docs[id] = document
-	store.changed = true
-	return nil
+	doc, ok := store.docs[id]
+	if !ok {
+		return nil, fmt.Errorf("not found")
+	}
+	return doc, nil
 }
 
-// Delete a document
-// Succeeds if the document doesn't exist
-func (store *DirFileStore) Delete(id string) error {
+// Return a list of documents
+//  offset is the offset in the document list that is sorted by document ID
+//  limit is the maximum nr of documents to return or 0 for the default
+// This returns an empty list if offset is equal or larger than the available nr of documents
+func (store *DirFileStore) List(offset int, limit int) []interface{} {
+
 	store.mutex.Lock()
 	defer store.mutex.Unlock()
-	delete(store.docs, id)
-	store.changed = true
-	return nil
+	keyList := make([]string, 0)
+	for key := range store.docs {
+		keyList = append(keyList, key)
+	}
+	sort.Strings(keyList)
+	sortedDocs := make([]interface{}, len(keyList))
+
+	for index := offset; index < len(keyList) && index < offset+limit; index++ {
+		key := keyList[index]
+		sortedDocs[index] = store.docs[key]
+	}
+
+	return sortedDocs
 }
 
 // Open the store
@@ -141,44 +159,75 @@ func (store *DirFileStore) Open() error {
 	return err
 }
 
+// Patch a document
+// Returns an error if it doesn't exist
+func (store *DirFileStore) Patch(id string, src map[string]interface{}) error {
+	store.mutex.Lock()
+	defer store.mutex.Unlock()
+	logrus.Infof("DirFileStore.Patch: ID=%s", id)
+
+	// the new doc is merged into the original
+	dest := store.docs[id].(map[string]interface{})
+
+	err := mergo.Map(&dest, src, mergo.WithOverride)
+	if err != nil {
+		return err
+	}
+
+	store.changed = true
+
+	return nil
+}
+
 // Query for documents using JSONPATH
 // Eg `$[? @.properties.deviceType=="sensor"]`
-func (store *DirFileStore) Query(jsonPath string) (interface{}, error) {
+//  jsonPath contains the query
+//  offset contains the offset in the list of results, sorted by ID
+//  limit contains the maximum or of responses, 0 for the default 100
+func (store *DirFileStore) Query(jsonPath string, offset int, limit int) ([]interface{}, error) {
 	//  "github.com/PaesslerAG/jsonpath" - just works, amazing!
 	// Unfortunately no filter with bracket notation $[? @.["title"]=="my title"]
 	// res, err := jsonpath.Get(jsonPath, store.docs)
 	// github.com/ohler55/ojg/jp - seems to work with in-mem maps, no @token in bracket notation
+	logrus.Infof("DirFileStore.Query: jsonPath='%s', offset=%d, limit=%d", jsonPath, offset, limit)
 	jpExpr, err := jp.ParseString(jsonPath)
 	if err != nil {
 		return nil, err
 	}
+	if limit == 0 {
+		limit = store.maxLimit
+	}
+	for key, item := range store.docs {
+		logrus.Infof("store item: key='%s', val='%v'", key, item)
+	}
+	// Note: store.docs is a map but query returns a list. The key is lost
+	// Does the same query always returns the same order?
+	// TODO: sort the result
 	res := jpExpr.Get(store.docs)
 
-	// The following parsers don't work on an in-memory store :/
-	//  They would need to parse the whole tree after each update.
-	// github.com/vmware-labs/yaml-jsonpath - requires a yaml node
-
+	if offset > 0 || limit < len(res) {
+		res = res[offset:limit]
+	}
 	return res, err
 }
 
-// Read a document by its ID
-// Returns an error if it doesn't exist
-func (store *DirFileStore) Read(id string) (interface{}, error) {
+// Remove a document from the store
+// Succeeds if the document doesn't exist
+func (store *DirFileStore) Remove(id string) error {
 	store.mutex.Lock()
 	defer store.mutex.Unlock()
-	doc, ok := store.docs[id]
-	if !ok {
-		return nil, fmt.Errorf("not found")
-	}
-	return doc, nil
+	delete(store.docs, id)
+	store.changed = true
+	return nil
 }
 
-// Update a document
-// Returns an error if it doesn't exist
-func (store *DirFileStore) Update(id string, doc interface{}) error {
+// Replace a document
+// The document does not have to exist
+func (store *DirFileStore) Replace(id string, document map[string]interface{}) error {
 	store.mutex.Lock()
 	defer store.mutex.Unlock()
-	store.docs[id] = doc
+	store.docs[id] = document
+	store.changed = true
 	return nil
 }
 
@@ -188,6 +237,7 @@ func NewDirFileStore(jsonFilePath string) *DirFileStore {
 	store := DirFileStore{
 		docs:      make(map[string]interface{}),
 		storePath: jsonFilePath,
+		maxLimit:  100,
 	}
 	return &store
 }

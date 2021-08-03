@@ -16,28 +16,30 @@ func DirStoreStartStop(t *testing.T, store IDirStore) {
 
 func DirStoreCrud(t *testing.T, store IDirStore) {
 	thingID := "thing1"
-	thingTD1 := "this is a td"
-	thingTD2 := "this is a td updated"
+	thingTD1 := make(map[string]interface{})
+	thingTD1["a"] = "this is a td"
+	thingTD2 := make(map[string]interface{})
+	thingTD2["b"] = "this is a td updated"
 	err := store.Open()
 	assert.NoError(t, err)
 	// Create
-	err = store.Create(thingID, thingTD1)
+	err = store.Replace(thingID, thingTD1)
 	assert.NoError(t, err)
 	// Read
-	td2, err := store.Read(thingID)
+	td2, err := store.Get(thingID)
 	assert.NoError(t, err)
 	assert.Equal(t, thingTD1, td2)
 	// Update
-	err = store.Update(thingID, thingTD2)
+	err = store.Replace(thingID, thingTD2)
 	assert.NoError(t, err)
-	td2, err = store.Read(thingID)
+	td2, err = store.Get(thingID)
 	assert.NoError(t, err)
 	assert.Equal(t, thingTD2, td2)
 
 	// Delete
-	err = store.Delete(thingID)
+	err = store.Remove(thingID)
 	assert.NoError(t, err)
-	_, err = store.Read(thingID)
+	_, err = store.Get(thingID)
 	assert.Error(t, err)
 
 	store.Close()
