@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/sirupsen/logrus"
 	"github.com/wostzone/wostlib-go/pkg/td"
 	"github.com/wostzone/wostlib-go/pkg/tlsclient"
 )
@@ -97,6 +98,7 @@ func (dc *DirClient) ListTDs(offset int, limit int) ([]td.ThingTD, error) {
 		return nil, err
 	}
 	err = json.Unmarshal(response, &tdList)
+	logrus.Infof("DirClient.ListTDs. Returned %d TD(s)", len(tdList))
 	return tdList, err
 }
 
@@ -124,6 +126,7 @@ func (dc *DirClient) QueryTDs(jsonpath string, offset int, limit int) ([]td.Thin
 		return nil, err
 	}
 	err = json.Unmarshal(response, &tdList)
+	logrus.Infof("DirClient.QueryTDs. Returned %d TD(s)", len(tdList))
 	return tdList, err
 }
 

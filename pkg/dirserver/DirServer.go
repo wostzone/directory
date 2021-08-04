@@ -5,8 +5,8 @@ import (
 
 	"github.com/grandcat/zeroconf"
 	"github.com/sirupsen/logrus"
-	"github.com/wostzone/thingdir/pkg/dirclient"
-	"github.com/wostzone/thingdir/pkg/dirstore/dirfilestore"
+	"github.com/wostzone/thingdir-go/pkg/dirclient"
+	"github.com/wostzone/thingdir-go/pkg/dirstore/dirfilestore"
 	"github.com/wostzone/wostlib-go/pkg/tlsserver"
 )
 
@@ -84,10 +84,11 @@ func (srv *DirectoryServer) Start() error {
 	return nil
 }
 
-//Stop the IdProv server
+// Stop the IdProv server
 func (srv *DirectoryServer) Stop() {
 	if srv.running {
 		srv.running = false
+		logrus.Warningf("Stopping directory server on %s:%d", srv.address, srv.port)
 		if srv.discoServer != nil {
 			srv.discoServer.Shutdown()
 			srv.discoServer = nil
@@ -95,14 +96,13 @@ func (srv *DirectoryServer) Stop() {
 	}
 }
 
-// Create a new instance of the IoT Device Provisioning Server
-//  storePath is the location of the directory storage file
-//  instanceID is the unique ID for this service used in discovery and communication
-//  address the server listening address. Must use the same address as the services
-//  port server listening port
-//  caCertFolder location of CA Cert and server certificates and keys
-//  discoveryName for use in dns-sd. Use "" to disable discover, or the dirclient.DirectoryServiceName for default
-
+// NewDirectoryServer creates a new instance of the IoT Device Provisioning Server.
+//  - instanceID is the unique ID for this service used in discovery and communication
+//  - storePath is the location of the directory storage file. This must be writable.
+//  - address the server listening address. Typically the same address as the services
+//  - port server listening port
+//  - caCertFolder location of CA Cert and server certificates and keys
+//  - discoveryName for use in dns-sd. Use "" to disable discover, or the dirclient.DirectoryServiceName for default
 func NewDirectoryServer(
 	instanceID string,
 	storePath string,

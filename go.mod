@@ -1,4 +1,4 @@
-module github.com/wostzone/thingdir
+module github.com/wostzone/thingdir-go
 
 go 1.14
 

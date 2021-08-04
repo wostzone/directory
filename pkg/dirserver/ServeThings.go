@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"net/http"
 
-	"github.com/wostzone/thingdir/pkg/dirclient"
+	"github.com/wostzone/thingdir-go/pkg/dirclient"
 )
 
 // ServeThings lists or queries available TDs

@@ -10,8 +10,8 @@ import (
 	"github.com/sirupsen/logrus"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	"github.com/wostzone/thingdir/pkg/dirstore"
-	"github.com/wostzone/thingdir/pkg/dirstore/dirfilestore"
+	"github.com/wostzone/thingdir-go/pkg/dirstore"
+	"github.com/wostzone/thingdir-go/pkg/dirstore/dirfilestore"
 	"github.com/wostzone/wostlib-go/pkg/td"
 	"github.com/wostzone/wostlib-go/pkg/vocab"
 )
