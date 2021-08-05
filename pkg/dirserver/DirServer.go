@@ -1,6 +1,7 @@
 package dirserver
 
 import (
+	"net/http"
 	"time"
 
 	"github.com/grandcat/zeroconf"
@@ -28,6 +29,7 @@ type DirectoryServer struct {
 	port           uint   // listening port
 	serverCertPath string // path to server certificate PEM file
 	serverKeyPath  string // path to server private key PEM file
+	authenticator  func(http.ResponseWriter, *http.Request) error
 
 	// the service name. Use dirclient.DirectoryServiceName for default or "" to disable DNS discovery
 	discoveryName string
@@ -65,7 +67,8 @@ func (srv *DirectoryServer) Start() error {
 
 		// srv.address = hubconfig.GetOutboundIP("").String()
 		srv.tlsServer = tlsserver.NewTLSServer(
-			srv.address, srv.port, srv.serverCertPath, srv.serverKeyPath, srv.caCertPath)
+			srv.address, srv.port,
+			srv.serverCertPath, srv.serverKeyPath, srv.caCertPath, srv.authenticator)
 		err = srv.tlsServer.Start()
 		if err != nil {
 			return err
@@ -103,6 +106,7 @@ func (srv *DirectoryServer) Stop() {
 //  - port server listening port
 //  - caCertFolder location of CA Cert and server certificates and keys
 //  - discoveryName for use in dns-sd. Use "" to disable discover, or the dirclient.DirectoryServiceName for default
+//  - authenticator authenticates the user for the request
 func NewDirectoryServer(
 	instanceID string,
 	storePath string,
@@ -111,7 +115,9 @@ func NewDirectoryServer(
 	discoveryName string,
 	serverCertPath string,
 	serverKeyPath string,
-	caCertPath string) *DirectoryServer {
+	caCertPath string,
+	authenticator func(http.ResponseWriter, *http.Request) error,
+) *DirectoryServer {
 
 	if instanceID == "" || port == 0 {
 		logrus.Panic("NewDirectoryServer: Invalid arguments for instanceID or port")
@@ -126,6 +132,7 @@ func NewDirectoryServer(
 		instanceID:     instanceID,
 		port:           port,
 		store:          dirfilestore.NewDirFileStore(storePath),
+		authenticator:  authenticator,
 	}
 	return &srv
 }

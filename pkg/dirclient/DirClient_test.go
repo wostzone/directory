@@ -34,7 +34,11 @@ var pluginKeyPath string
 func startTestServer() *tlsserver.TLSServer {
 	serverCertPath := path.Join(serverCertFolder, certsetup.HubCertFile)
 	serverKeyPath := path.Join(serverCertFolder, certsetup.HubKeyFile)
-	server := tlsserver.NewTLSServer(testDirectoryAddr, testDirectoryPort, serverCertPath, serverKeyPath, caCertPath)
+	server := tlsserver.NewTLSServer(testDirectoryAddr, testDirectoryPort,
+		serverCertPath, serverKeyPath, caCertPath,
+		nil)
+
+	// Todo test with auth
 
 	server.Start()
 	return server
@@ -62,13 +66,27 @@ func TestMain(m *testing.M) {
 	os.Exit(res)
 }
 
-func TestOpenClose(t *testing.T) {
+func TestConnectClose(t *testing.T) {
 	// launch a server to receive requests
 	server := startTestServer()
+	server.AddHandler(dirclient.RouteThings, func(resp http.ResponseWriter, req *http.Request) {
+		tds := []map[string]interface{}{}
+		data, _ := json.Marshal(tds)
+		resp.Write([]byte(data))
+		//return
+	})
 	//
 	dirClient := dirclient.NewDirClient(testDirectoryAddr, testDirectoryPort, caCertPath)
 
 	err := dirClient.ConnectWithClientCert(pluginCertPath, pluginKeyPath)
+	assert.NoError(t, err)
+	_, err = dirClient.ListTDs(0, 0)
+	assert.NoError(t, err)
+
+	// username password login not setup so that should not result in an error
+	err = dirClient.ConnectWithLoginID("user1", "pass1")
+	assert.NoError(t, err)
+	_, err = dirClient.ListTDs(0, 0)
 	assert.NoError(t, err)
 
 	dirClient.Close()
@@ -78,6 +96,7 @@ func TestOpenClose(t *testing.T) {
 func TestUpdateTD(t *testing.T) {
 	var receivedTD td.ThingTD
 	var body []byte
+	var receivedPatch bool
 	var err2 error
 	const id1 = "thing1"
 
@@ -90,6 +109,12 @@ func TestUpdateTD(t *testing.T) {
 			if err2 == nil {
 				err2 = json.Unmarshal(body, &receivedTD)
 			}
+		} else if request.Method == "PATCH" {
+			body, err2 = ioutil.ReadAll(request.Body)
+			if err2 == nil {
+				err2 = json.Unmarshal(body, &receivedTD)
+			}
+			receivedPatch = true
 		} else if request.Method == "GET" {
 			parts := strings.Split(request.URL.Path, "/")
 			id := parts[len(parts)-1]
@@ -98,6 +123,7 @@ func TestUpdateTD(t *testing.T) {
 			msg, _ := json.Marshal(receivedTD)
 			response.Write(msg)
 		}
+		assert.NoError(t, err2)
 	})
 
 	dirClient := dirclient.NewDirClient(testDirectoryAddr, testDirectoryPort, caCertPath)
@@ -111,10 +137,15 @@ func TestUpdateTD(t *testing.T) {
 	assert.NoError(t, err2)
 	assert.Equal(t, id1, receivedTD["id"])
 
-	//
+	// check result
 	receivedTD2, err := dirClient.GetTD(id1)
 	assert.NoError(t, err)
 	assert.Equal(t, id1, receivedTD2["id"])
+
+	// patch the a TD document
+	err = dirClient.PatchTD(id1, td)
+	assert.NoError(t, err)
+	assert.True(t, receivedPatch)
 
 	dirClient.Close()
 	server.Stop()
@@ -158,6 +189,9 @@ func TestQueryAndList(t *testing.T) {
 	td3, err := dirClient.ListTDs(0, 0)
 	require.NoError(t, err)
 	assert.NotEmpty(t, td3)
+
+	_, err = dirClient.GetTD("notexistingtd")
+	require.Error(t, err)
 
 	dirClient.Close()
 	server.Stop()

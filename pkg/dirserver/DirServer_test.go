@@ -1,6 +1,8 @@
 package dirserver_test
 
 import (
+	"fmt"
+	"net/http"
 	"os"
 	"path"
 	"testing"
@@ -42,6 +44,8 @@ var tdDefs = []struct {
 	{"thing4", vocab.DeviceTypeNetSwitch, "main switch"},
 }
 
+var authResult error = nil
+
 // Add a bunch of TDs
 func AddTds(client *dirclient.DirClient) {
 	for _, tdDef := range tdDefs {
@@ -49,6 +53,11 @@ func AddTds(client *dirclient.DirClient) {
 		td.AddTDProperty(td1, "name", td.CreateProperty(tdDef.name, "", vocab.PropertyTypeAttr))
 		client.UpdateTD(tdDef.id, td1)
 	}
+}
+
+// Authenticator for testing of aut
+func authHandler(resp http.ResponseWriter, req *http.Request) error {
+	return authResult
 }
 
 // TestMain runs a directory server for use by the test cases in this package
@@ -73,8 +82,12 @@ func TestMain(m *testing.M) {
 	pluginKeyPath = path.Join(serverCertFolder, certsetup.PluginKeyFile)
 
 	directoryServer = dirserver.NewDirectoryServer(
-		testDirectoryServiceInstanceID, storePath, serverAddress, testDirectoryPort,
-		testServiceDiscoveryName, serverCertPath, serverKeyPath, caCertPath)
+		testDirectoryServiceInstanceID,
+		storePath,
+		serverAddress, testDirectoryPort,
+		testServiceDiscoveryName,
+		serverCertPath, serverKeyPath, caCertPath,
+		authHandler)
 	directoryServer.Start()
 
 	res := m.Run()
@@ -219,6 +232,19 @@ func TestBadRequest(t *testing.T) {
 	require.Error(t, err)
 
 	_, err = dirClient.GetTD("notavalidID")
+	require.Error(t, err)
+}
+
+func TestNoAuth(t *testing.T) {
+	dirClient := dirclient.NewDirClient(serverAddress, testDirectoryPort, caCertPath)
+	dirClient.ConnectWithClientCert(pluginCertPath, pluginKeyPath)
+
+	_, err := dirClient.ListTDs(0, 0)
+	require.NoError(t, err)
+
+	authResult = fmt.Errorf("Unauthorized")
+
+	_, err = dirClient.ListTDs(0, 0)
 	require.Error(t, err)
 
 }

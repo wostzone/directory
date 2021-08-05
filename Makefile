@@ -3,14 +3,12 @@ DIST_FOLDER=./dist
 
 FORCE: help
 
-all: directory ## Build package with binary distribution and config
-
-all: FORCE ## This is a library, nothing to build
+all: thingdir-pb ## Build package with binary distribution and config
 
 test: FORCE ## Run tests (stop on first error, don't run parallel)
 		go test -failfast -p 1 -v ./pkg/...
 
-install:  ## Install the plugin into ~/bin/wost/bin and config
+install: all  ## Install the plugin into ~/bin/wost/bin and config
 	cp dist/bin/* ~/bin/wost/bin/
 	cp -n dist/config/* ~/bin/wost/config/
 
@@ -22,8 +20,8 @@ clean: ## Clean distribution files
 	rm -f $(DIST_FOLDER)/bin/*
 	rm -f $(DIST_FOLDER)/arm/*
 
-directory:
-	GOOS=linux go build -o $(DIST_FOLDER)/bin/$@ ./main.go
+thingdir-pb: ## Build thingdir-pb plugin
+	go build -o $(DIST_FOLDER)/bin/$@ ./cmd/$@/main.go
 	@echo "> SUCCESS. Plugin '$@' can be found at $(DIST_FOLDER)/bin/$@ and $(DIST_FOLDER)/arm/$@"
 
 help: ## Show this help
