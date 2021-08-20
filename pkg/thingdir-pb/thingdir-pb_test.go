@@ -64,8 +64,13 @@ func TestMain(m *testing.M) {
 }
 
 func TestStartStopThingDirectoryService(t *testing.T) {
-	tdirConfig := &thingdirpb.ThingDirPBConfig{DirAddress: hubConfig.MqttAddress}
-	hubConfig, err := hubconfig.LoadCommandlineConfig(homeFolder, thingdirpb.PluginID, &tdirConfig)
+	// tdirConfig := &thingdirpb.ThingDirPBConfig{DirAddress: hubConfig.MqttAddress}
+	tdirConfig := &thingdirpb.ThingDirPBConfig{}
+	hubConfig, err := hubconfig.LoadHubConfig(homeFolder, thingdirpb.PluginID)
+	assert.NoError(t, err)
+	err = hubconfig.LoadPluginConfig(hubConfig.ConfigFolder, thingdirpb.PluginID, &tdirConfig, nil)
+
+	// hubConfig, err := hubconfig.LoadCommandlineConfig(homeFolder, thingdirpb.PluginID, &tdirConfig)
 	assert.NoError(t, err)
 
 	tdirPB := thingdirpb.NewThingDirPB(tdirConfig, hubConfig)
@@ -78,14 +83,31 @@ func TestStartStopThingDirectoryService(t *testing.T) {
 
 	_, err = tdirClient.ListTDs(0, 0)
 	assert.NoError(t, err)
+	logrus.Infof("TestUpdateTD: Closing ")
 
 	tdirClient.Close()
 	tdirPB.Stop()
 }
 
+func TestStartThingDirBadAddress(t *testing.T) {
+	// tdirConfig := &thingdirpb.ThingDirPBConfig{DirAddress: hubConfig.MqttAddress}
+	tdirConfig := &thingdirpb.ThingDirPBConfig{}
+	hubConfig, err := hubconfig.LoadHubConfig(homeFolder, thingdirpb.PluginID)
+	hubConfig.MqttAddress = "wrongaddress"
+	assert.NoError(t, err)
+
+	tdirPB := thingdirpb.NewThingDirPB(tdirConfig, hubConfig)
+	err = tdirPB.Start()
+	assert.Error(t, err)
+}
+
 func TestUpdateTD(t *testing.T) {
 	tdirConfig := &thingdirpb.ThingDirPBConfig{DirAddress: hubConfig.MqttAddress}
-	hubConfig, err := hubconfig.LoadCommandlineConfig(homeFolder, thingdirpb.PluginID, &tdirConfig)
+	hubConfig, err := hubconfig.LoadHubConfig(homeFolder, thingdirpb.PluginID)
+	assert.NoError(t, err)
+	err = hubconfig.LoadPluginConfig(hubConfig.ConfigFolder, thingdirpb.PluginID, &tdirConfig, nil)
+
+	// hubConfig, err := hubconfig.LoadCommandlineConfig(homeFolder, thingdirpb.PluginID, &tdirConfig)
 	assert.NoError(t, err)
 
 	tdirPB := thingdirpb.NewThingDirPB(tdirConfig, hubConfig)
@@ -110,6 +132,7 @@ func TestUpdateTD(t *testing.T) {
 	assert.NoError(t, err)
 	assert.Equal(t, 1, len(tds))
 
+	logrus.Infof("TestUpdateTD: Closing ")
 	tdirClient.Close()
 	tdirPB.Stop()
 }

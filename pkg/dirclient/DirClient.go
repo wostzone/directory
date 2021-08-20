@@ -146,7 +146,7 @@ func (dc *DirClient) UpdateTD(id string, td td.ThingTD) error {
 //  port to connect to
 //  caCertPath server CA certificate for verification, obtained during provisioning using idprov
 func NewDirClient(address string, port uint, caCertPath string) *DirClient {
-	tlsClient := tlsclient.NewTLSClient(address, port, caCertPath)
+	tlsClient, _ := tlsclient.NewTLSClient(address, port, caCertPath)
 	dc := &DirClient{
 		address:   address,
 		port:      port,

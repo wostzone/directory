@@ -3,6 +3,7 @@ package dirfilestore_test
 import (
 	"encoding/json"
 	"fmt"
+	"os"
 	"testing"
 	"time"
 
@@ -16,8 +17,42 @@ import (
 	"github.com/wostzone/wostlib-go/pkg/vocab"
 )
 
+const (
+	Thing1ID        = "thing1"
+	Thing2ID        = "thing2"
+	PropNameTitle   = "title"
+	PropTitle1Value = "title1"
+	PropNameVersion = "version"
+)
+
+// AddTDs adds two TDs with two properties each: Title and version
+func addTDs(store *dirfilestore.DirFileStore) {
+	id1 := Thing1ID
+	td1 := td.CreateTD(id1, vocab.DeviceTypeSensor)
+
+	prop1 := td.CreateProperty(PropNameTitle, "Property title", vocab.PropertyTypeAttr)
+	td.SetPropertyValue(prop1, PropTitle1Value)
+	td.AddTDProperty(td1, PropNameTitle, prop1)
+
+	prop2 := td.CreateProperty(PropNameVersion, "Thing version", vocab.PropertyTypeAttr)
+	td.SetPropertyValue(prop2, "version1")
+	td.AddTDProperty(td1, PropNameVersion, prop2)
+
+	id2 := Thing2ID
+	td2 := td.CreateTD(id2, vocab.DeviceTypeSensor)
+	td.AddTDProperty(td2, PropNameTitle, prop1)
+	td.AddTDProperty(td2, PropNameVersion, prop2)
+
+	tdd := map[string]interface{}(td1)
+	store.Replace(id1, tdd)
+	tdd = map[string]interface{}(td2)
+	store.Replace(id2, tdd)
+
+}
+
 func makeFileStore() *dirfilestore.DirFileStore {
 	filename := "/tmp/test-dirfilestore.json"
+	os.Remove(filename) // remove if exist
 	store := dirfilestore.NewDirFileStore(filename)
 	return store
 }
@@ -34,25 +69,49 @@ func TestFileStoreStartStop(t *testing.T) {
 	dirstore.DirStoreStartStop(t, fileStore)
 }
 
+func TestCreateStoreBadFolder(t *testing.T) {
+	filename := "/folder/does/notexist/dirfilestore.json"
+	store := dirfilestore.NewDirFileStore(filename)
+	err := store.Open()
+	assert.Error(t, err)
+}
+
+func TestCreateStoreReadOnlyFolder(t *testing.T) {
+	filename := "/var/dirfilestore.json"
+	store := dirfilestore.NewDirFileStore(filename)
+	err := store.Open()
+	assert.Error(t, err)
+}
+
+func TestCreateStoreCantReadFile(t *testing.T) {
+	filename := "/var"
+	store := dirfilestore.NewDirFileStore(filename)
+	err := store.Open()
+	assert.Error(t, err)
+}
+
 func TestFileStoreWrite(t *testing.T) {
 	fileStore := makeFileStore()
 	dirstore.DirStoreCrud(t, fileStore)
 }
 
-func TestQuery(t *testing.T) {
-	id1 := "thing1"
-	td1 := td.CreateTD(id1, vocab.DeviceTypeSensor)
-	td.AddTDProperty(td1, "title", "The sensor")
-	id2 := "thing2"
-	td2 := td.CreateTD(id2, vocab.DeviceTypeSensor)
-	td.AddTDProperty(td2, "title", "The switch")
+func TestList(t *testing.T) {
 	fileStore := makeFileStore()
 	fileStore.Open()
+	addTDs(fileStore)
+
+	items := fileStore.List(0, 0)
+	assert.Greater(t, len(items), 0)
+	item1 := items[0]
+	require.NotNil(t, item1)
+
+}
+
+func TestQuery(t *testing.T) {
+	fileStore := makeFileStore()
+	fileStore.Open()
+	addTDs(fileStore)
 	// dirstore.DirStoreCrud(t, fileStore)
-	tdd := map[string]interface{}(td1)
-	fileStore.Replace(id1, tdd)
-	tdd = map[string]interface{}(td2)
-	fileStore.Replace(id2, tdd)
 
 	t1 := time.Now()
 	var i int
@@ -64,12 +123,20 @@ func TestQuery(t *testing.T) {
 		assert.NotEmpty(t, res)
 
 		// regular nested filter comparison
-		res, err = fileStore.Query(`$[?(@.properties.title=="The sensor")]`, 0, 0)
+		res, err = fileStore.Query(`$[?(@.properties.title.value=="title1")]`, 0, 0)
 		assert.NoError(t, err)
 		assert.NotEmpty(t, res)
 
-		// filter with nested notation
-		res, err = fileStore.Query(`$.*[?(@.title=="The sensor")]`, 0, 0)
+		// filter with nested notation. some examples that return a list of TDs matching the filter
+		//res, err = fileStore.Query(`$[?(@.properties.title.value=="title1")]`, 0, 0)
+		// res, err = fileStore.Query(`$[?(@.*.title.value=="title1")]`, 0, 0)
+		// res, err = fileStore.Query(`$[?(@['properties']['title']['value']=="title1")]`, 0, 0)
+		res, err = fileStore.Query(`$[?(@..title.value=="title1")]`, 0, 0)
+
+		// these only return the properties - not good
+		// res, err = fileStore.Query(`$.*.properties[?(@.value=="title1")]`, 0, 0) // returns list of props, not tds
+		//res, err = fileStore.Query(`$.*.*[?(@.value=="title1")]`, 0, 0) // returns list of props, not tds
+		// res, err = fileStore.Query(`$[?(@...value=="title1")]`, 0, 0)
 		assert.NoError(t, err)
 		assert.NotEmpty(t, res)
 
@@ -83,6 +150,10 @@ func TestQuery(t *testing.T) {
 		res, err = fileStore.Query(`$[?(@['@type']=="sensor")]`, 0, 1)
 		assert.NoError(t, err)
 		assert.NotEmpty(t, res)
+
+		// bad query expression
+		_, err = fileStore.Query(`$[?(.id=="thing1")]`, 0, 0)
+		assert.Error(t, err)
 	}
 	d1 := time.Since(t1)
 	logrus.Infof("TestQuery, %d runs: %d msec", i, d1.Milliseconds())
@@ -157,9 +228,9 @@ func TestQueryBracketNotationB(t *testing.T) {
 	res, err := fileStore.Query(queryString, 0, 2)
 	assert.NoError(t, err)
 	assert.Equal(t, 2, len(res))
-	item1 := res[0].(map[string]interface{})
-	item1ID := item1["id"]
-	assert.Equal(t, id1, item1ID)
+	// item1 := res[0].(map[string]interface{})
+	// item1ID := item1["id"]
+	// assert.(t, id1, item1ID)
 	// assert.Equal(t, res[0], td1)
 
 	fileStore.Close()
@@ -200,4 +271,34 @@ func TestQueryValueProp(t *testing.T) {
 
 	fileStore.Close()
 
+}
+
+// Test of merging two TDs
+// TODO: improve tests to verify a correct merge
+func TestPatch(t *testing.T) {
+	fileStore := makeFileStore()
+	fileStore.Open()
+	addTDs(fileStore)
+
+	id2 := "thing2"
+	td2 := td.CreateTD(id2, vocab.DeviceTypeSensor)
+	prop2 := td.CreateProperty("title2", "description2", vocab.PropertyTypeAttr)
+	td.SetPropertyValue(prop2, "value2")
+	td.AddTDProperty(td2, "title2", prop2)
+	fileStore.Patch(id2, td2)
+
+	td2b, err := fileStore.Get(id2)
+	assert.NoError(t, err)
+	thing2 := td2b.(map[string]interface{})
+
+	val, found := td.GetPropertyValue(thing2, PropNameTitle)
+	assert.True(t, found, "Expected propery title1 to still exist")
+	assert.Equal(t, PropTitle1Value, val)
+
+	val, found = td.GetPropertyValue(thing2, "title2")
+	assert.True(t, found, "Expected propery title2 to exist")
+	// thing2b := td2b.(td.ThingTD)
+	// val := thing2b["title2"]
+	assert.Equal(t, "value2", val)
+	fileStore.Close()
 }

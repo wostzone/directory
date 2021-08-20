@@ -3,6 +3,7 @@ package thingdirpb
 import (
 	"path"
 
+	"github.com/sirupsen/logrus"
 	"github.com/wostzone/thingdir-go/pkg/dirclient"
 	"github.com/wostzone/thingdir-go/pkg/dirserver"
 	"github.com/wostzone/wostlib-go/pkg/certsetup"
@@ -18,11 +19,13 @@ type ThingDirPBConfig struct {
 	DisableDirServer bool   `yaml:"disableDirServer"` // Disable the built-in directory server and use an external server
 	DirAddress       string `yaml:"dirAddress"`       // Directory server address, default is that of the mqtt server
 	DirPort          uint   `yaml:"dirPort"`          // Directory server listening port, default is dirclient.DefaultPort
-	EnableDiscovery  bool   `yaml:"enableDiscovery"`  // Enable server DNS-SD discovery
-	ServiceName      string `yaml:"serviceName"`      // DNS-SD service name: "_{serviceName}._tcp" when using discovery
 	ServerCertPath   string `yaml:"serverCertPath"`   // server cert location. Default is hub's server
 	ServerKeyPath    string `yaml:"serverKeyPath"`    // server key location. Default is hub's key
 	ServerCaPath     string `yaml:"serverCaPath"`     // server CA cert location for client auth. Default is hub's CA
+
+	// DNS-SD discovery settings
+	EnableDiscovery bool   `yaml:"enableDiscovery"` // Enable server DNS-SD discovery
+	ServiceName     string `yaml:"serviceName"`     // DNS-SD service name: as used in "_{serviceName}._tcp" when using discovery
 
 	// directory client settings
 	// If an external directory is used these fields must be set
@@ -37,6 +40,7 @@ type ThingDirPBConfig struct {
 	MsgbusCaPath   string `yaml:"msgbusCaCertPath"` // message bus CA cert location. Default is hub's CA
 
 	//	VerifyPublisherInThingID bool   `yaml:"verifyPublisherInThingID"` // publisher must be the ThingID publisher
+	// directory store settings
 	DirectoryStoreFolder string `yaml:"storeFolder"` // location of directory files
 }
 
@@ -55,6 +59,7 @@ type ThingDirPB struct {
 //  3. Creates a client to subscribe to TD updates on the message bus
 // This automatically captures updates to TD documents published on the message bus
 func (pb *ThingDirPB) Start() error {
+	logrus.Infof("ThingDirPB.Start")
 	var err error
 	// First get the directory server up and running, if not disabled
 	if !pb.config.DisableDirServer {
@@ -90,14 +95,15 @@ func (pb *ThingDirPB) Start() error {
 
 // Stop the ThingDir service
 func (pb *ThingDirPB) Stop() {
-	if pb.dirServer != nil {
-		pb.dirServer.Stop()
+	logrus.Infof("ThingDirPB.Stop")
+	if pb.hubClient != nil {
+		pb.hubClient.Close()
 	}
 	if pb.dirClient != nil {
 		pb.dirClient.Close()
 	}
-	if pb.hubClient != nil {
-		pb.hubClient.Close()
+	if pb.dirServer != nil {
+		pb.dirServer.Stop()
 	}
 }
 

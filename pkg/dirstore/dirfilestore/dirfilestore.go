@@ -18,22 +18,27 @@ import (
 	"path"
 	"sort"
 	"sync"
+	"time"
 
 	"github.com/imdario/mergo"
 	"github.com/ohler55/ojg/jp"
 	"github.com/sirupsen/logrus"
 )
 
+// Max nr of items to return in list
+const DefaultListLimit = 100
+
 // DirFileStore is a crude little file based Directory store
 // Intended as a testing MVP for the directory service
 // Implements the IDirStore interface
 type DirFileStore struct {
-	docs      map[string]interface{} // documents by ID
-	changed   bool
-	storePath string
-	running   bool
-	mutex     sync.Mutex
-	maxLimit  int // default maximum for the limit value in list and queries
+	docs        map[string]interface{} // documents by ID
+	storePath   string
+	running     bool
+	mutex       sync.Mutex
+	maxLimit    int // default maximum for the limit value in list and queries
+	updateCount int // nr of updates since last save
+	done        chan bool
 }
 
 func createStoreFile(filePath string) error {
@@ -54,7 +59,7 @@ func createStoreFile(filePath string) error {
 	return err
 }
 
-// createStoreFolder creates the folder if it only exists
+// createStoreFolder creates the folder for the store if it doesn't exist
 // The parent folder must exist otherwise this fails
 func createStoreFolder(storeFolder string) error {
 	_, err := os.Stat(storeFolder)
@@ -84,8 +89,11 @@ func readStoreFile(storePath string) (docs map[string]interface{}, err error) {
 
 // writeStoreFile writes the store to file
 func writeStoreFile(storePath string, docs map[string]interface{}) error {
+	logrus.Infof("writeStoreFile: Writing Thing Directory to '%s'", storePath)
 	rawData, err := json.MarshalIndent(docs, "  ", "  ")
 	if err == nil {
+		// FIXME: write to temp file and rename instead of writing to file directly. See pw and acl store
+
 		// only allow this user access
 		err = os.WriteFile(storePath, rawData, 0600)
 	}
@@ -95,14 +103,35 @@ func writeStoreFile(storePath string, docs map[string]interface{}) error {
 	return err
 }
 
+// AutoSaveLoop periodically saves changes to the directory
+func (store *DirFileStore) AutoSaveLoop() {
+	logrus.Infof("AutoSaveLoop: autosave loop started")
+	for store.running {
+		if store.updateCount > 0 {
+			store.mutex.Lock()
+			writeStoreFile(store.storePath, store.docs)
+			store.updateCount = 0
+			store.mutex.Unlock()
+		}
+		// does this need to be configurable?
+		time.Sleep(time.Second * 3)
+	}
+	logrus.Infof("AutoSaveLoop: autosave loop ended")
+	store.done <- true
+}
+
 // Close the store
 func (store *DirFileStore) Close() {
+	logrus.Infof("DirFileStore.Close: Closing directory")
+	store.running = false
+	<-store.done
+
 	store.mutex.Lock()
 	defer store.mutex.Unlock()
-	if store.changed {
+
+	if store.updateCount > 0 {
 		writeStoreFile(store.storePath, store.docs)
 	}
-	store.running = false
 }
 
 // Get a document by its ID
@@ -122,6 +151,10 @@ func (store *DirFileStore) Get(id string) (interface{}, error) {
 //  limit is the maximum nr of documents to return or 0 for the default
 // This returns an empty list if offset is equal or larger than the available nr of documents
 func (store *DirFileStore) List(offset int, limit int) []interface{} {
+
+	if limit <= 0 {
+		limit = DefaultListLimit
+	}
 
 	store.mutex.Lock()
 	defer store.mutex.Unlock()
@@ -143,6 +176,7 @@ func (store *DirFileStore) List(offset int, limit int) []interface{} {
 // Open the store
 // Returns error if it can't be opened or already open
 func (store *DirFileStore) Open() error {
+	logrus.Infof("DirFileStore.Open: Opening Thing Directory from '%s'", store.storePath)
 	store.mutex.Lock()
 	defer store.mutex.Unlock()
 
@@ -156,6 +190,7 @@ func (store *DirFileStore) Open() error {
 		store.docs, err = readStoreFile(store.storePath)
 	}
 	store.running = true
+	go store.AutoSaveLoop()
 	return err
 }
 
@@ -174,7 +209,7 @@ func (store *DirFileStore) Patch(id string, src map[string]interface{}) error {
 		return err
 	}
 
-	store.changed = true
+	store.updateCount++
 
 	return nil
 }
@@ -217,7 +252,7 @@ func (store *DirFileStore) Remove(id string) error {
 	store.mutex.Lock()
 	defer store.mutex.Unlock()
 	delete(store.docs, id)
-	store.changed = true
+	store.updateCount++
 	return nil
 }
 
@@ -227,7 +262,7 @@ func (store *DirFileStore) Replace(id string, document map[string]interface{}) e
 	store.mutex.Lock()
 	defer store.mutex.Unlock()
 	store.docs[id] = document
-	store.changed = true
+	store.updateCount++
 	return nil
 }
 
@@ -238,6 +273,7 @@ func NewDirFileStore(jsonFilePath string) *DirFileStore {
 		docs:      make(map[string]interface{}),
 		storePath: jsonFilePath,
 		maxLimit:  100,
+		done:      make(chan bool, 1),
 	}
 	return &store
 }

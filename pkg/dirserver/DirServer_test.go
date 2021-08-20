@@ -2,7 +2,6 @@ package dirserver_test
 
 import (
 	"fmt"
-	"net/http"
 	"os"
 	"path"
 	"testing"
@@ -56,7 +55,7 @@ func AddTds(client *dirclient.DirClient) {
 }
 
 // Authenticator for testing of aut
-func authHandler(resp http.ResponseWriter, req *http.Request) error {
+func authHandler(username string, password string) error {
 	return authResult
 }
 
@@ -233,18 +232,21 @@ func TestBadRequest(t *testing.T) {
 
 	_, err = dirClient.GetTD("notavalidID")
 	require.Error(t, err)
+	dirClient.Close()
 }
 
 func TestNoAuth(t *testing.T) {
+	loginID := "user1"
+	password := "pass1"
 	dirClient := dirclient.NewDirClient(serverAddress, testDirectoryPort, caCertPath)
-	dirClient.ConnectWithClientCert(pluginCertPath, pluginKeyPath)
-
-	_, err := dirClient.ListTDs(0, 0)
-	require.NoError(t, err)
 
 	authResult = fmt.Errorf("Unauthorized")
 
-	_, err = dirClient.ListTDs(0, 0)
-	require.Error(t, err)
+	err := dirClient.ConnectWithLoginID(loginID, password)
+	assert.Error(t, err)
 
+	_, err = dirClient.ListTDs(0, 0)
+	assert.Error(t, err)
+
+	dirClient.Close()
 }

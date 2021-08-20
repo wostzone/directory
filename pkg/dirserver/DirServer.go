@@ -1,7 +1,7 @@
 package dirserver
 
 import (
-	"net/http"
+	"path"
 	"time"
 
 	"github.com/grandcat/zeroconf"
@@ -12,6 +12,7 @@ import (
 )
 
 const DirectoryPluginID = "directory"
+const DefaultDirectoryStoreFile = "directory.json"
 
 // const RouteUpdateTD = "/things/{thingID}"
 // const RouteGetTD = "/things/{thingID}"
@@ -29,7 +30,7 @@ type DirectoryServer struct {
 	port           uint   // listening port
 	serverCertPath string // path to server certificate PEM file
 	serverKeyPath  string // path to server private key PEM file
-	authenticator  func(http.ResponseWriter, *http.Request) error
+	authenticator  func(username string, password string) error
 
 	// the service name. Use dirclient.DirectoryServiceName for default or "" to disable DNS discovery
 	discoveryName string
@@ -52,18 +53,15 @@ func (srv *DirectoryServer) Start() error {
 	var err error
 
 	if !srv.running {
-		// srv.listenAddress = listenAddress
 		srv.running = true
 
 		logrus.Warningf("Starting directory server on %s:%d", srv.address, srv.port)
-		// srv.caCertPEM, err = certsetup.LoadPEM(srv.caCertFolder, certsetup.CaCertFile)
-		// if err != nil {
-		// 	return err
-		// }
-		// srv.caKeyPEM, err = certsetup.LoadPEM(srv.caCertFolder, certsetup.CaKeyFile)
-		// if err != nil {
-		// 	return err
-		// }
+
+		// load the saved directory content from file
+		err = srv.store.Open()
+		if err != nil {
+			return err
+		}
 
 		// srv.address = hubconfig.GetOutboundIP("").String()
 		srv.tlsServer = tlsserver.NewTLSServer(
@@ -73,10 +71,12 @@ func (srv *DirectoryServer) Start() error {
 		if err != nil {
 			return err
 		}
+
 		// setup the handlers for the paths. The GET/PUT/... operations are resolved by the handler
 		srv.tlsServer.AddHandler(dirclient.RouteThings, srv.ServeThings)
 		srv.tlsServer.AddHandler(dirclient.RouteThingID, srv.ServeThingByID)
 
+		// DNS-SD service discovery is optional
 		if srv.discoveryName != "" {
 			srv.discoServer, _ = ServeDirDiscovery(srv.instanceID, srv.discoveryName, srv.address, srv.port)
 		}
@@ -87,7 +87,7 @@ func (srv *DirectoryServer) Start() error {
 	return nil
 }
 
-// Stop the IdProv server
+// Stop the directory server
 func (srv *DirectoryServer) Stop() {
 	if srv.running {
 		srv.running = false
@@ -96,33 +96,40 @@ func (srv *DirectoryServer) Stop() {
 			srv.discoServer.Shutdown()
 			srv.discoServer = nil
 		}
+		if srv.tlsServer != nil {
+			srv.tlsServer.Stop()
+			srv.tlsServer = nil
+		}
+		srv.store.Close()
+
 	}
 }
 
 // NewDirectoryServer creates a new instance of the IoT Device Provisioning Server.
 //  - instanceID is the unique ID for this service used in discovery and communication
-//  - storePath is the location of the directory storage file. This must be writable.
+//  - storeFolder is the location of the directory storage file. This must be writable.
 //  - address the server listening address. Typically the same address as the services
 //  - port server listening port
 //  - caCertFolder location of CA Cert and server certificates and keys
 //  - discoveryName for use in dns-sd. Use "" to disable discover, or the dirclient.DirectoryServiceName for default
-//  - authenticator authenticates the user for the request
+//  - authenticator authenticates the user for the request. Not used for client certificates
 func NewDirectoryServer(
 	instanceID string,
-	storePath string,
+	storeFolder string,
 	address string,
 	port uint,
 	discoveryName string,
 	serverCertPath string,
 	serverKeyPath string,
 	caCertPath string,
-	authenticator func(http.ResponseWriter, *http.Request) error,
+	authenticator func(username string, password string) error,
 ) *DirectoryServer {
 
 	if instanceID == "" || port == 0 {
 		logrus.Panic("NewDirectoryServer: Invalid arguments for instanceID or port")
 		panic("Exit due to invalid args")
 	}
+	storePath := path.Join(storeFolder, DefaultDirectoryStoreFile)
 	srv := DirectoryServer{
 		address:        address,
 		serverCertPath: serverCertPath,

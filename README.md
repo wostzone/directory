@@ -30,18 +30,21 @@ WoST Things are more secure than traditional IoT devices as they do not run a se
 
 This directory service provides the means to store and query registered Things.
 
-The [WoT Directory Specification](https://w3c.github.io/wot-discovery/#exploration-directory-api) describes the requirements and is used to guide this implementation. The intent is to be compliant where possible. Note that at the time of implementation this specification is still a draft and subject to change. While the specification covers both service discovery and a directory service, this service focuses exclusively on the directory aspect. For discovery see the '[idprov-go](https://github.com/wostzone/idprov-go)' plugin.
+The [WoT Directory Specification](https://w3c.github.io/wot-discovery/#exploration-directory-api) describes the requirements and is used to guide this implementation. The intent is to be compliant where possible. Note that at the time of implementation this specification is still a draft and subject to change. While the specification covers both service discovery and a directory service, this service focuses exclusively on the directory aspect. For discovery see the '[idprov-go](https://github.com/wostzone/idprov-go)' provisioning plugin.
 
-In WoST, the registration of Things is the responsibility of the Hub Directory Protocol Binding. This protocol binding listens on the message bus for updates to Thing Descriptions and registers these into the Thing Directory. Things themselves only have to publish their updates on the message bus.
- 
-Multiple hubs can use the same Thing Directory to register store Thing TD information.
+In WoST, the registration of Things is the responsibility of the Directory Service. Things themselves only have to publish their updates on the message bus without consideration for who uses the information. This separation of concerns simplifies centralized access control using the hubauth service. It also simplifies the Thing device as it only has to connect to the message bus.
 
-> TD data flow: Thing -> Hub message bus -> WostDir protocol binding -> WostDir Thing Directory Store
 
-The initial version of the Thing Directory Store uses a simple file store with in-memory cache for fast JSON-Path based queries. Updates are periodicially flushed to disk. 
+This package consists of 4 parts:
+1. Directory client for golang clients. Clients for other languages will be made available as well, or users can implement their own using the protocol described below.
 
-Future versions might support different choices of backends and support for more complex query facilities.
+2. Directory store for storing and querying Thing Description documents. The current implementation uses a file based store with an in-memory cache. Additional storage backends can be added in the future.
 
+3. Directory server to serve directory requests. This implements the server side of the directory protocol as described below. Authentication and authorization is handled using the hubauth service. See hubauth for details on the groups and roles that govern access.
+
+4. Directory protocol binding to the WoST message bus. This service subscribes to the Thing message bus and updates the Thing directory with changes. Things do NOT update the directory themselves, they only need to publish their updates on the message bus.
+
+The initial version of the Thing Directory Store uses a file store with in-memory cache for fast JSON-Path based queries. Updates are periodicially flushed to disk. 
 
 
 ## API
@@ -215,7 +218,7 @@ This is a library intended to be used with an application that handles authentic
 Currently a file based backend is supported. Additional backends can be added in the future.
 
 
-Starting and stopping the server:
+Starting and stopping the service:
 
 ```golang 
   import "github.com/wostzone/thingdir/pkg/dirserver"
@@ -239,28 +242,11 @@ Starting and stopping the server:
     serverAddress, serverPort,
 		serviceDiscoveryName, 
     serverCertPath, serverKeyPath, 
-    caCertPath,
-    authenticationHook,
-    authorizationHook )
+    caCertPath )
 	directoryServer.Start()
 
-  // do stuff
+  // do stuff 
+
+  // stop when done
   directoryServer.Stop()
 ```
-
-
-### Authentication
-
-The directory server supports TLS mutual certificate authentication out of the box. If the client does not have a valid client certificate then the authentication callback is invoked, which is typically loginID and password based.
-
-<todo>
-
-
-### Authorization
-
-The service supports a callback for authorizing a read, update or delete action on a TD document.
-
-
-<todo>
-
-

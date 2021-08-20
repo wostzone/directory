@@ -82,10 +82,13 @@ func TestConnectClose(t *testing.T) {
 	assert.NoError(t, err)
 	_, err = dirClient.ListTDs(0, 0)
 	assert.NoError(t, err)
+	dirClient.Close()
 
-	// username password login not setup so that should not result in an error
+	// server isn't setup with username password login so login endpoint is not found
+	dirClient = dirclient.NewDirClient(testDirectoryAddr, testDirectoryPort, caCertPath)
 	err = dirClient.ConnectWithLoginID("user1", "pass1")
-	assert.NoError(t, err)
+	assert.Error(t, err)
+	// without server auth this should still succeed
 	_, err = dirClient.ListTDs(0, 0)
 	assert.NoError(t, err)
 
