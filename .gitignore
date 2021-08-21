@@ -20,3 +20,6 @@
 dist/certs/*
 dist/bin/*
 dist/logs/*
+
+# temp files for testing
+test/config/directory.json

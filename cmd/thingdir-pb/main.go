@@ -30,6 +30,7 @@ func main() {
 	}
 	logrus.Printf("Successful started Thing Directory server\n")
 	hubclient.WaitForSignal()
-	logrus.Printf("ThingDir server stopped\n")
+
+	pb.Stop()
 	os.Exit(0)
 }

@@ -1,3 +1,4 @@
+// Package dirserver for serving access to the directory store
 package dirserver
 
 import (

@@ -106,7 +106,6 @@ func TestStartStop(t *testing.T) {
 	assert.NoError(t, err)
 
 	dirClient.Close()
-	directoryServer.Stop()
 }
 
 func TestUpdate(t *testing.T) {

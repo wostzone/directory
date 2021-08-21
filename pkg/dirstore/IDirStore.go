@@ -1,3 +1,5 @@
+// Package dirstore for storage of directory information
+// This is an interface to support different backend implementations
 package dirstore
 
 // Interface to the directory JSON object store

@@ -27,12 +27,12 @@ type ThingDirPBConfig struct {
 	EnableDiscovery bool   `yaml:"enableDiscovery"` // Enable server DNS-SD discovery
 	ServiceName     string `yaml:"serviceName"`     // DNS-SD service name: as used in "_{serviceName}._tcp" when using discovery
 
-	// directory client settings
-	// If an external directory is used these fields must be set
-	InstanceID        string `yaml:"instanceID"`  // Unique server instance ID, default is plugin ID
-	DirClientCertPath string `yaml:"dirCertPath"` // Client certificate for connecting to the directory server.
-	DirClientKeyPath  string `yaml:"dirKeyPath"`  // Client key location for connecting to the directory server
-	DirCaPath         string `yaml:"dirCaPath"`   // Directory server CA cert location. Default is hub's CA
+	// protocl binding client settings used to connect the protocol binding to the directory server
+	// If an external directory is used these fields must be set. Defaults to the internal server
+	PbClientID       string `yaml:"pbClientID"`       // Unique server instance ID, default is plugin ID
+	PbClientCertPath string `yaml:"pbClientCertPath"` // Client certificate for connecting to the directory server.
+	PbClientKeyPath  string `yaml:"pbClientKeyPath"`  // Client key location for connecting to the directory server
+	PbClientCaPath   string `yaml:"pbClientCaPath"`   // Directory server CA cert location. Default is hub's CA
 
 	// mqtt client settings
 	MsgbusCertPath string `yaml:"msgbusCertPath"`   // Client certificate for connecting to the message bus.
@@ -64,7 +64,7 @@ func (pb *ThingDirPB) Start() error {
 	// First get the directory server up and running, if not disabled
 	if !pb.config.DisableDirServer {
 		pb.dirServer = dirserver.NewDirectoryServer(
-			pb.config.InstanceID,
+			pb.config.PbClientID,
 			pb.config.DirectoryStoreFolder,
 			pb.config.DirAddress, pb.config.DirPort,
 			pb.config.ServiceName,
@@ -76,9 +76,9 @@ func (pb *ThingDirPB) Start() error {
 			return err
 		}
 	}
-	// connect a client to the directory server
-	pb.dirClient = dirclient.NewDirClient(pb.config.DirAddress, pb.config.DirPort, pb.config.DirCaPath)
-	err = pb.dirClient.ConnectWithClientCert(pb.config.DirClientCertPath, pb.config.DirClientKeyPath)
+	// connect a client to the directory server for use by the protocol binding
+	pb.dirClient = dirclient.NewDirClient(pb.config.DirAddress, pb.config.DirPort, pb.config.PbClientCaPath)
+	err = pb.dirClient.ConnectWithClientCert(pb.config.PbClientCertPath, pb.config.PbClientKeyPath)
 	if err != nil {
 		return err
 	}
@@ -141,17 +141,17 @@ func NewThingDirPB(config *ThingDirPBConfig, hubConfig *hubconfig.HubConfig) *Th
 	}
 
 	// Directory client defaults
-	if config.InstanceID == "" {
-		config.InstanceID = PluginID
+	if config.PbClientID == "" {
+		config.PbClientID = PluginID
 	}
-	if config.DirCaPath == "" {
-		config.DirCaPath = path.Join(hubConfig.CertsFolder, certsetup.CaCertFile)
+	if config.PbClientCaPath == "" {
+		config.PbClientCaPath = path.Join(hubConfig.CertsFolder, certsetup.CaCertFile)
 	}
-	if config.DirClientCertPath == "" {
-		config.DirClientCertPath = path.Join(hubConfig.CertsFolder, certsetup.PluginCertFile)
+	if config.PbClientCertPath == "" {
+		config.PbClientCertPath = path.Join(hubConfig.CertsFolder, certsetup.PluginCertFile)
 	}
-	if config.DirClientKeyPath == "" {
-		config.DirClientKeyPath = path.Join(hubConfig.CertsFolder, certsetup.PluginKeyFile)
+	if config.PbClientKeyPath == "" {
+		config.PbClientKeyPath = path.Join(hubConfig.CertsFolder, certsetup.PluginKeyFile)
 	}
 
 	// Message bus client defaults

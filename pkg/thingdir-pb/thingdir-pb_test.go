@@ -42,7 +42,7 @@ func TestMain(m *testing.M) {
 	cwd, _ := os.Getwd()
 	homeFolder = path.Join(cwd, "../../test")
 	certFolder = path.Join(homeFolder, "certs")
-	hubConfig, _ = hubconfig.LoadHubConfig(homeFolder, "plugin1")
+	hubConfig, _ = hubconfig.LoadHubConfig("", homeFolder, "plugin1")
 	hostnames := []string{hubConfig.MqttAddress}
 
 	// make sure the certificates are there
@@ -66,7 +66,7 @@ func TestMain(m *testing.M) {
 func TestStartStopThingDirectoryService(t *testing.T) {
 	// tdirConfig := &thingdirpb.ThingDirPBConfig{DirAddress: hubConfig.MqttAddress}
 	tdirConfig := &thingdirpb.ThingDirPBConfig{}
-	hubConfig, err := hubconfig.LoadHubConfig(homeFolder, thingdirpb.PluginID)
+	hubConfig, err := hubconfig.LoadHubConfig("", homeFolder, thingdirpb.PluginID)
 	assert.NoError(t, err)
 	err = hubconfig.LoadPluginConfig(hubConfig.ConfigFolder, thingdirpb.PluginID, &tdirConfig, nil)
 
@@ -92,7 +92,7 @@ func TestStartStopThingDirectoryService(t *testing.T) {
 func TestStartThingDirBadAddress(t *testing.T) {
 	// tdirConfig := &thingdirpb.ThingDirPBConfig{DirAddress: hubConfig.MqttAddress}
 	tdirConfig := &thingdirpb.ThingDirPBConfig{}
-	hubConfig, err := hubconfig.LoadHubConfig(homeFolder, thingdirpb.PluginID)
+	hubConfig, err := hubconfig.LoadHubConfig("", homeFolder, thingdirpb.PluginID)
 	hubConfig.MqttAddress = "wrongaddress"
 	assert.NoError(t, err)
 
@@ -103,7 +103,7 @@ func TestStartThingDirBadAddress(t *testing.T) {
 
 func TestUpdateTD(t *testing.T) {
 	tdirConfig := &thingdirpb.ThingDirPBConfig{DirAddress: hubConfig.MqttAddress}
-	hubConfig, err := hubconfig.LoadHubConfig(homeFolder, thingdirpb.PluginID)
+	hubConfig, err := hubconfig.LoadHubConfig("", homeFolder, thingdirpb.PluginID)
 	assert.NoError(t, err)
 	err = hubconfig.LoadPluginConfig(hubConfig.ConfigFolder, thingdirpb.PluginID, &tdirConfig, nil)
 
@@ -130,7 +130,7 @@ func TestUpdateTD(t *testing.T) {
 	time.Sleep(time.Second)
 	tds, err := tdirClient.ListTDs(0, 0)
 	assert.NoError(t, err)
-	assert.Equal(t, 1, len(tds))
+	assert.Greater(t, len(tds), 0, "missing TDs in store")
 
 	logrus.Infof("TestUpdateTD: Closing ")
 	tdirClient.Close()

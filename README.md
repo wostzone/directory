@@ -4,47 +4,40 @@ Golang implementation of a Thing Directory Service client and server library.
 
 ## Objective
 
-Provide a service for registering Thing Descriptions, compatible with the WoT specification for directory services.
+Provide a service for registering and querying of Thing Descriptions that are published on the message bus, compatible with the WoT specification for directory services.
 
 
 ## Status
 
-The status of this library is Alpha. 
-This initial MVP version is intended for the Wost Hub directory protocol binding, but it is designed to be usable outside of WoST.
-
-Still to do:
-* authentication hook
-* authorization hook
-
+The status of this library is Alpha. It is functional but breaking changes can be expected.
 
 ## Audience
 
 This project is aimed at IoT developers that value the security and interoperability that WoST brings.
 WoST Things are more secure than traditional IoT devices as they do not run a server, but instead connect to a Hub to publish their information and receive actions. 
 
-
-## Dependencies
-
-
 ## Summary
 
-This directory service provides the means to store and query registered Things.
+This directory service provides the means to store and query Thing Description documents.
 
-The [WoT Directory Specification](https://w3c.github.io/wot-discovery/#exploration-directory-api) describes the requirements and is used to guide this implementation. The intent is to be compliant where possible. Note that at the time of implementation this specification is still a draft and subject to change. While the specification covers both service discovery and a directory service, this service focuses exclusively on the directory aspect. For discovery see the '[idprov-go](https://github.com/wostzone/idprov-go)' provisioning plugin.
+The [WoT Directory Specification](https://w3c.github.io/wot-discovery/#exploration-directory-api) describes the requirements for a directory service and is used to guide this implementation. The intent is to be compliant where possible. Note that at the time of implementation this specification is still a draft and subject to change. While the specification covers both service discovery and a directory service, this service focuses exclusively on the directory aspect. For discovery see the '[idprov-go](https://github.com/wostzone/idprov-go)' provisioning plugin.
 
-In WoST, the registration of Things is the responsibility of the Directory Service. Things themselves only have to publish their updates on the message bus without consideration for who uses the information. This separation of concerns simplifies centralized access control using the hubauth service. It also simplifies the Thing device as it only has to connect to the message bus.
+In WoST, the registration of Things is the responsibility of the Directory Service. Things themselves only have to publish their updates on the message bus without consideration for who uses the information. This separation of concerns has the following benefits:
+- allows for centralized access control via a auth service
+- simplifies access control for Thing devices as they don't have to implement it
+- simplifies Thing devices as it only needs to publish updates to the message bus
+- support multiple directories 
 
 
 This package consists of 4 parts:
-1. Directory client for golang clients. Clients for other languages will be made available as well, or users can implement their own using the protocol described below.
 
-2. Directory store for storing and querying Thing Description documents. The current implementation uses a file based store with an in-memory cache. Additional storage backends can be added in the future.
+1. Directory store for storing and querying Thing Description documents. The current implementation uses a file based store with an in-memory cache. Additional storage backends can be added in the future.
 
-3. Directory server to serve directory requests. This implements the server side of the directory protocol as described below. Authentication and authorization is handled using the hubauth service. See hubauth for details on the groups and roles that govern access.
+2. Directory server to serve directory requests. This implements the server side of the directory protocol as described below. Authentication and authorization is handled using the hubauth service. See hubauth for details on the groups and roles that govern access.
 
-4. Directory protocol binding to the WoST message bus. This service subscribes to the Thing message bus and updates the Thing directory with changes. Things do NOT update the directory themselves, they only need to publish their updates on the message bus.
+3. Directory protocol binding to the WoST message bus. This service subscribes to the Thing message bus and updates the Thing directory with changes. Things do NOT update the directory themselves, they only need to publish their updates on the message bus.
 
-The initial version of the Thing Directory Store uses a file store with in-memory cache for fast JSON-Path based queries. Updates are periodicially flushed to disk. 
+4. Directory client for golang clients, including the directory protocol binding. Intended for clients to update and query the directory. Clients for other languages will be made available as well, or users can implement their own using the protocol described below.
 
 
 ## API
@@ -192,7 +185,7 @@ The parameters governing the mitigation can be defined in the service configurat
 
 ### System Requirements
 
-This is a stand-alone library intended to be used by WoST. It uses the wostlib-go library but is has otherwise no other dependencies on WoST.
+This service is intended for use as part of the WoST Hub. See Hub system requirements for details.
 
 ### Manual Installation
 
@@ -213,40 +206,9 @@ When successful, the plugin can be found in dist/bin. An example configuration f
 
 ## Usage
 
-This is a library intended to be used with an application that handles authentication and authorization. See also the thingdir-pb protocol binding that is included in the WoST Hub core.
+Configure the service through the config/thingdir-pb.yaml protocol binding configuration file. All settings are optional. The service uses the hub.yaml configuration to determine defaults compatible with the WoST Hub. 
 
-Currently a file based backend is supported. Additional backends can be added in the future.
+To launch the service simply run dist/bin/thingdir-pb, which subscribes to TDs on the message bus and updates the store. It also launches the service for use by clients to query the directory. 
 
+Currently a file based backend is included. Additional backends can be added in the future.
 
-Starting and stopping the service:
-
-```golang 
-  import "github.com/wostzone/thingdir/pkg/dirserver"
-  import "github.com/wostzone/wostlib-go/pkg/hubnet"
-
-
-  instanceID := "mydirserver"
-  serviceDiscoveryName := "thingdir"
-  storeFolder := "./config"      // use your own folder to store the directory files
-  serverAddress := hubnet.GetOutboundIP("").String()
-  serverPort := "9999"
-  serverCertPath := "certs/serverCert.pem"
-  serverKeyPath := "certs/serverKey.pem"
-  caCertPath := "certs/caCert.pem"
-  authenticationHook := nil // your login/password authentication function
-  authorizationHook := nil  // your authorization function
-
-	directoryServer = dirserver.NewDirectoryServer(
-		instanceID, 
-    storeFolder, 
-    serverAddress, serverPort,
-		serviceDiscoveryName, 
-    serverCertPath, serverKeyPath, 
-    caCertPath )
-	directoryServer.Start()
-
-  // do stuff 
-
-  // stop when done
-  directoryServer.Stop()
-```
