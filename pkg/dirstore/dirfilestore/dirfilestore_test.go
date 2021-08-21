@@ -109,7 +109,8 @@ func TestList(t *testing.T) {
 
 func TestQuery(t *testing.T) {
 	fileStore := makeFileStore()
-	fileStore.Open()
+	err := fileStore.Open()
+	require.NoError(t, err)
 	addTDs(fileStore)
 	// dirstore.DirStoreCrud(t, fileStore)
 

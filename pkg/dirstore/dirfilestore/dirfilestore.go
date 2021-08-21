@@ -32,13 +32,13 @@ const DefaultListLimit = 100
 // Intended as a testing MVP for the directory service
 // Implements the IDirStore interface
 type DirFileStore struct {
-	docs        map[string]interface{} // documents by ID
-	storePath   string
-	running     bool
-	mutex       sync.Mutex
-	maxLimit    int // default maximum for the limit value in list and queries
-	updateCount int // nr of updates since last save
-	done        chan bool
+	docs                 map[string]interface{} // documents by ID
+	storePath            string
+	mutex                sync.RWMutex
+	maxLimit             int // default maximum for the limit value in list and queries
+	updateCount          int // nr of updates since last save
+	backgroundLoopEnded  chan bool
+	backgroundLoopEnding chan bool
 }
 
 func createStoreFile(filePath string) error {
@@ -106,25 +106,34 @@ func writeStoreFile(storePath string, docs map[string]interface{}) error {
 // AutoSaveLoop periodically saves changes to the directory
 func (store *DirFileStore) AutoSaveLoop() {
 	logrus.Infof("AutoSaveLoop: autosave loop started")
-	for store.running {
-		if store.updateCount > 0 {
+
+	defer close(store.backgroundLoopEnded)
+
+	for {
+		select {
+		case <-store.backgroundLoopEnding:
+			logrus.Infof("AutoSaveLoop: autosave loop ended")
+			return
+		default:
 			store.mutex.Lock()
-			writeStoreFile(store.storePath, store.docs)
-			store.updateCount = 0
+			if store.updateCount > 0 {
+				writeStoreFile(store.storePath, store.docs)
+				store.updateCount = 0
+			}
 			store.mutex.Unlock()
+			// does this need to be configurable?
+			time.Sleep(time.Second * 3)
 		}
-		// does this need to be configurable?
-		time.Sleep(time.Second * 3)
 	}
-	logrus.Infof("AutoSaveLoop: autosave loop ended")
-	store.done <- true
 }
 
 // Close the store
 func (store *DirFileStore) Close() {
 	logrus.Infof("DirFileStore.Close: Closing directory")
-	store.running = false
-	<-store.done
+	store.backgroundLoopEnding <- true
+
+	// wait for the background loop to end
+	<-store.backgroundLoopEnded
 
 	store.mutex.Lock()
 	defer store.mutex.Unlock()
@@ -189,7 +198,6 @@ func (store *DirFileStore) Open() error {
 	if err == nil {
 		store.docs, err = readStoreFile(store.storePath)
 	}
-	store.running = true
 	go store.AutoSaveLoop()
 	return err
 }
@@ -270,10 +278,11 @@ func (store *DirFileStore) Replace(id string, document map[string]interface{}) e
 //  filePath path to JSON store file
 func NewDirFileStore(jsonFilePath string) *DirFileStore {
 	store := DirFileStore{
-		docs:      make(map[string]interface{}),
-		storePath: jsonFilePath,
-		maxLimit:  100,
-		done:      make(chan bool, 1),
+		docs:                 make(map[string]interface{}),
+		storePath:            jsonFilePath,
+		maxLimit:             100,
+		backgroundLoopEnding: make(chan bool),
+		backgroundLoopEnded:  make(chan bool),
 	}
 	return &store
 }

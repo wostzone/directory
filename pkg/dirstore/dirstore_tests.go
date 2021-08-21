@@ -3,6 +3,7 @@ package dirstore
 
 import (
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/assert"
 )
@@ -35,6 +36,8 @@ func DirStoreCrud(t *testing.T, store IDirStore) {
 	td2, err = store.Get(thingID)
 	assert.NoError(t, err)
 	assert.Equal(t, thingTD2, td2)
+
+	time.Sleep(time.Second * 10)
 
 	// Delete
 	err = store.Remove(thingID)

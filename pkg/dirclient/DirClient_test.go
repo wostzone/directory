@@ -44,6 +44,7 @@ func startTestServer() *tlsserver.TLSServer {
 	return server
 }
 
+// test setup. Run tests with -p 1 as this test environment doesn't handle concurrent tests
 func TestMain(m *testing.M) {
 	logrus.Infof("------ TestMain of DirectoryClient ------")
 	testDirectoryAddr = hubnet.GetOutboundIP("").String()
