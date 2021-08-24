@@ -54,7 +54,7 @@ func TestMain(m *testing.M) {
 	pluginKeyPath = path.Join(certFolder, certsetup.PluginKeyFile)
 
 	// start a mqtt test server
-	mosquittoCmd := testenv.Setup(homeFolder, hubConfig.MqttCertPort)
+	mosquittoCmd := testenv.Setup(homeFolder, hubConfig.MqttPortCert, hubConfig.MqttPortWS)
 
 	res := m.Run()
 
