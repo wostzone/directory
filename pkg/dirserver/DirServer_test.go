@@ -1,7 +1,6 @@
 package dirserver_test
 
 import (
-	"fmt"
 	"os"
 	"path"
 	"testing"
@@ -23,6 +22,8 @@ const testServiceDiscoveryName = "thingdir"
 
 // These are set in TestMain
 var serverCertFolder string
+var serverCertPath string
+var serverKeyPath string
 var serverAddress string
 
 var homeFolder string
@@ -30,6 +31,7 @@ var caCertPath string
 var directoryServer *dirserver.DirectoryServer
 var pluginCertPath string
 var pluginKeyPath string
+var storeFolder string
 
 // TD's for testing. Expect 2 sensors in this list
 var tdDefs = []struct {
@@ -43,7 +45,11 @@ var tdDefs = []struct {
 	{"thing4", vocab.DeviceTypeNetSwitch, "main switch"},
 }
 
-var authResult error = nil
+// authentication result
+var authenticateResult bool = true
+
+// authorization result
+var authorizeResult bool = true
 
 // Add a bunch of TDs
 func AddTds(client *dirclient.DirClient) {
@@ -54,9 +60,15 @@ func AddTds(client *dirclient.DirClient) {
 	}
 }
 
-// Authenticator for testing of aut
-func authHandler(username string, password string) error {
-	return authResult
+// Authenticator for testing of authentication of type 'authenticate.VerifyUsernamePassword'
+func authenticator(username string, password string) bool {
+	return authenticateResult
+}
+
+// Authorizer for testing of authorization of type 'authorize.ValidateAuthorization'
+func authorizer(userID string, certOU string,
+	thingID string, writing bool, writeType string) bool {
+	return authorizeResult
 }
 
 // TestMain runs a directory server for use by the test cases in this package
@@ -70,23 +82,24 @@ func TestMain(m *testing.M) {
 	homeFolder = path.Join(cwd, "../../test")
 	serverCertFolder = path.Join(homeFolder, "certs")
 	// certStoreFolder = path.Join(homeFolder, "certstore")
-	storePath := path.Join(homeFolder, "config")
+	storeFolder = path.Join(homeFolder, "config")
 
 	// make sure the certificates are there
 	certsetup.CreateCertificateBundle(hostnames, serverCertFolder)
-	serverCertPath := path.Join(serverCertFolder, certsetup.HubCertFile)
-	serverKeyPath := path.Join(serverCertFolder, certsetup.HubKeyFile)
+	serverCertPath = path.Join(serverCertFolder, certsetup.HubCertFile)
+	serverKeyPath = path.Join(serverCertFolder, certsetup.HubKeyFile)
 	caCertPath = path.Join(serverCertFolder, certsetup.CaCertFile)
 	pluginCertPath = path.Join(serverCertFolder, certsetup.PluginCertFile)
 	pluginKeyPath = path.Join(serverCertFolder, certsetup.PluginKeyFile)
 
 	directoryServer = dirserver.NewDirectoryServer(
 		testDirectoryServiceInstanceID,
-		storePath,
+		storeFolder,
 		serverAddress, testDirectoryPort,
 		testServiceDiscoveryName,
 		serverCertPath, serverKeyPath, caCertPath,
-		authHandler)
+		authenticator,
+		authorizer)
 	directoryServer.Start()
 
 	res := m.Run()
@@ -96,16 +109,31 @@ func TestMain(m *testing.M) {
 }
 
 func TestStartStop(t *testing.T) {
+
+	// test start/stop separate from TestMain
+	mydirserver := dirserver.NewDirectoryServer(
+		testDirectoryServiceInstanceID,
+		storeFolder,
+		serverAddress, testDirectoryPort+1,
+		testServiceDiscoveryName,
+		serverCertPath, serverKeyPath, caCertPath,
+		authenticator,
+		authorizer)
+	err := mydirserver.Start()
+	assert.NoError(t, err)
+
 	dirClient := dirclient.NewDirClient(serverAddress, testDirectoryPort, caCertPath)
 
 	a := directoryServer.Address()
 	assert.Equal(t, serverAddress, a)
 
 	// Client start only succeeds if server is running
-	err := dirClient.ConnectWithClientCert(pluginCertPath, pluginKeyPath)
+	err = dirClient.ConnectWithClientCert(pluginCertPath, pluginKeyPath)
 	assert.NoError(t, err)
 
 	dirClient.Close()
+	mydirserver.Stop()
+
 }
 
 func TestUpdate(t *testing.T) {
@@ -162,6 +190,25 @@ func TestPatch(t *testing.T) {
 	assert.NotEmpty(t, nameProp2val)
 	assert.Equal(t, nameProp1val, nameProp2val)
 	dirClient.Close()
+}
+
+func TestBadPatch(t *testing.T) {
+
+	dirClient := dirclient.NewDirClient(serverAddress, testDirectoryPort, caCertPath)
+
+	// Client start only succeeds if server is running
+	err := dirClient.ConnectWithClientCert(pluginCertPath, pluginKeyPath)
+	require.NoError(t, err)
+
+	AddTds(dirClient)
+	thingID1 := tdDefs[0].id
+	td1 := td.CreateTD(thingID1, vocab.DeviceTypeSensor)
+	td.AddTDProperty(td1, "name", td.CreateProperty("name1", "just a name", vocab.PropertyTypeAttr))
+
+	err = dirClient.PatchTD(thingID1, nil)
+	assert.Error(t, err)
+	dirClient.Close()
+
 }
 
 func TestQueryAndList(t *testing.T) {
@@ -234,17 +281,51 @@ func TestBadRequest(t *testing.T) {
 	dirClient.Close()
 }
 
-func TestNoAuth(t *testing.T) {
+func TestNotAuthenticated(t *testing.T) {
 	loginID := "user1"
 	password := "pass1"
 	dirClient := dirclient.NewDirClient(serverAddress, testDirectoryPort, caCertPath)
 
-	authResult = fmt.Errorf("Unauthorized")
+	authenticateResult = false
 
 	err := dirClient.ConnectWithLoginID(loginID, password)
 	assert.Error(t, err)
 
 	_, err = dirClient.ListTDs(0, 0)
+	assert.Error(t, err)
+
+	dirClient.Close()
+}
+
+func TestNotAuthorized(t *testing.T) {
+	thingID1 := tdDefs[0].id
+	loginID := "user1"
+	password := "pass1"
+	dirClient := dirclient.NewDirClient(serverAddress, testDirectoryPort, caCertPath)
+	td1 := td.CreateTD(thingID1, vocab.DeviceTypeSensor)
+	td.AddTDProperty(td1, "name", td.CreateProperty("name1", "just a name", vocab.PropertyTypeAttr))
+
+	authenticateResult = true
+	authorizeResult = false
+
+	err := dirClient.ConnectWithLoginID(loginID, password)
+	assert.NoError(t, err)
+
+	// expect empty list as the user is not authorized
+	tds, err := dirClient.ListTDs(0, 0)
+	assert.NoError(t, err)
+	assert.Empty(t, tds)
+
+	_, err = dirClient.GetTD(thingID1)
+	assert.Error(t, err)
+
+	err = dirClient.Delete(thingID1)
+	assert.Error(t, err)
+
+	err = dirClient.UpdateTD(thingID1, td1)
+	assert.Error(t, err)
+
+	err = dirClient.PatchTD(thingID1, td1)
 	assert.Error(t, err)
 
 	dirClient.Close()

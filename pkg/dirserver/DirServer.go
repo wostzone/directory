@@ -7,6 +7,8 @@ import (
 
 	"github.com/grandcat/zeroconf"
 	"github.com/sirupsen/logrus"
+	"github.com/wostzone/hubauth/pkg/authenticate"
+	"github.com/wostzone/hubauth/pkg/authorize"
 	"github.com/wostzone/thingdir-go/pkg/dirclient"
 	"github.com/wostzone/thingdir-go/pkg/dirstore/dirfilestore"
 	"github.com/wostzone/wostlib-go/pkg/tlsserver"
@@ -31,7 +33,8 @@ type DirectoryServer struct {
 	port           uint   // listening port
 	serverCertPath string // path to server certificate PEM file
 	serverKeyPath  string // path to server private key PEM file
-	authenticator  func(username string, password string) error
+	authenticator  authenticate.VerifyUsernamePassword
+	authorizer     authorize.VerifyAuthorization
 
 	// the service name. Use dirclient.DirectoryServiceName for default or "" to disable DNS discovery
 	discoveryName string
@@ -67,7 +70,8 @@ func (srv *DirectoryServer) Start() error {
 		// srv.address = hubconfig.GetOutboundIP("").String()
 		srv.tlsServer = tlsserver.NewTLSServer(
 			srv.address, srv.port,
-			srv.serverCertPath, srv.serverKeyPath, srv.caCertPath, srv.authenticator)
+			srv.serverCertPath, srv.serverKeyPath, srv.caCertPath,
+			srv.authenticator)
 		err = srv.tlsServer.Start()
 		if err != nil {
 			return err
@@ -109,11 +113,12 @@ func (srv *DirectoryServer) Stop() {
 // NewDirectoryServer creates a new instance of the IoT Device Provisioning Server.
 //  - instanceID is the unique ID for this service used in discovery and communication
 //  - storeFolder is the location of the directory storage file. This must be writable.
-//  - address the server listening address. Typically the same address as the services
+//  - address the server listening address. Typically the same address as the mqtt bus
 //  - port server listening port
 //  - caCertFolder location of CA Cert and server certificates and keys
 //  - discoveryName for use in dns-sd. Use "" to disable discover, or the dirclient.DirectoryServiceName for default
 //  - authenticator authenticates the user for the request. Not used for client certificates
+//  - authorizer verifies read or write access to a thing by a user. certOU is set when auth via certificate
 func NewDirectoryServer(
 	instanceID string,
 	storeFolder string,
@@ -123,7 +128,8 @@ func NewDirectoryServer(
 	serverCertPath string,
 	serverKeyPath string,
 	caCertPath string,
-	authenticator func(username string, password string) error,
+	authenticator authenticate.VerifyUsernamePassword,
+	authorizer authorize.VerifyAuthorization,
 ) *DirectoryServer {
 
 	if instanceID == "" || port == 0 {
@@ -141,6 +147,7 @@ func NewDirectoryServer(
 		port:           port,
 		store:          dirfilestore.NewDirFileStore(storePath),
 		authenticator:  authenticator,
+		authorizer:     authorizer,
 	}
 	return &srv
 }

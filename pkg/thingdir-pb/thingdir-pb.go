@@ -4,6 +4,10 @@ import (
 	"path"
 
 	"github.com/sirupsen/logrus"
+	"github.com/wostzone/hubauth/pkg/aclstore"
+	"github.com/wostzone/hubauth/pkg/authenticate"
+	"github.com/wostzone/hubauth/pkg/authorize"
+	"github.com/wostzone/hubauth/pkg/unpwstore"
 	"github.com/wostzone/thingdir-go/pkg/dirclient"
 	"github.com/wostzone/thingdir-go/pkg/dirserver"
 	"github.com/wostzone/wostlib-go/pkg/certsetup"
@@ -46,11 +50,13 @@ type ThingDirPBConfig struct {
 
 // Thing Directory Protocol Binding for the WoST Hub
 type ThingDirPB struct {
-	config    ThingDirPBConfig
-	hubConfig hubconfig.HubConfig
-	dirServer *dirserver.DirectoryServer
-	dirClient *dirclient.DirClient
-	hubClient *hubclient.MqttHubClient
+	config        ThingDirPBConfig
+	hubConfig     hubconfig.HubConfig
+	dirServer     *dirserver.DirectoryServer
+	dirClient     *dirclient.DirClient
+	hubClient     *hubclient.MqttHubClient
+	authenticator authenticate.VerifyUsernamePassword
+	authorizer    authorize.VerifyAuthorization
 }
 
 // Start the ThingDir service.
@@ -61,6 +67,7 @@ type ThingDirPB struct {
 func (pb *ThingDirPB) Start() error {
 	logrus.Infof("ThingDirPB.Start")
 	var err error
+
 	// First get the directory server up and running, if not disabled
 	if !pb.config.DisableDirServer {
 		pb.dirServer = dirserver.NewDirectoryServer(
@@ -69,7 +76,8 @@ func (pb *ThingDirPB) Start() error {
 			pb.config.DirAddress, pb.config.DirPort,
 			pb.config.ServiceName,
 			pb.config.ServerCertPath, pb.config.ServerKeyPath, pb.config.ServerCaPath,
-			nil)
+			pb.authenticator,
+			pb.authorizer)
 
 		err = pb.dirServer.Start()
 		if err != nil {
@@ -165,10 +173,19 @@ func NewThingDirPB(config *ThingDirPBConfig, hubConfig *hubconfig.HubConfig) *Th
 		config.MsgbusCaPath = path.Join(hubConfig.CertsFolder, certsetup.CaCertFile)
 	}
 
+	// The file based stores are the only option for now
+	aclFile := hubConfig.AclStorePath
+	aclStore := aclstore.NewAclFileStore(aclFile, "ThingDirPB")
+
+	unpwFile := hubConfig.UnpwStorePath
+	unpwStore := unpwstore.NewPasswordFileStore(unpwFile, "ThingDirPB")
+
 	tdir := ThingDirPB{
-		config:    *config,
-		hubConfig: *hubConfig,
-		hubClient: hubclient.NewMqttHubPluginClient(PluginID, hubConfig),
+		config:        *config,
+		hubConfig:     *hubConfig,
+		hubClient:     hubclient.NewMqttHubPluginClient(PluginID, hubConfig),
+		authenticator: authenticate.NewAuthenticator(unpwStore).VerifyUsernamePassword,
+		authorizer:    authorize.NewAuthorizer(aclStore).VerifyAuthorization,
 	}
 	return &tdir
 }

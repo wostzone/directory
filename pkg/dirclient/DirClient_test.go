@@ -70,7 +70,7 @@ func TestMain(m *testing.M) {
 func TestConnectClose(t *testing.T) {
 	// launch a server to receive requests
 	server := startTestServer()
-	server.AddHandler(dirclient.RouteThings, func(resp http.ResponseWriter, req *http.Request) {
+	server.AddHandler(dirclient.RouteThings, func(userID string, resp http.ResponseWriter, req *http.Request) {
 		tds := []map[string]interface{}{}
 		data, _ := json.Marshal(tds)
 		resp.Write([]byte(data))
@@ -105,7 +105,7 @@ func TestUpdateTD(t *testing.T) {
 	const id1 = "thing1"
 
 	server := startTestServer()
-	server.AddHandler(dirclient.RouteThingID, func(response http.ResponseWriter, request *http.Request) {
+	server.AddHandler(dirclient.RouteThingID, func(userID string, response http.ResponseWriter, request *http.Request) {
 		logrus.Infof("TestUpdateTD: %s %s", request.Method, request.RequestURI)
 
 		if request.Method == "POST" {
@@ -160,7 +160,7 @@ func TestQueryAndList(t *testing.T) {
 	const query = "$.hello.world"
 	server := startTestServer()
 	// if no thingID is specified then this is a request for a list or a query
-	server.AddHandler(dirclient.RouteThings, func(response http.ResponseWriter, request *http.Request) {
+	server.AddHandler(dirclient.RouteThings, func(userID string, response http.ResponseWriter, request *http.Request) {
 		logrus.Infof("TestQuery: %s %s", request.Method, request.RequestURI)
 
 		if request.Method == "GET" {
@@ -206,7 +206,7 @@ func TestDelete(t *testing.T) {
 	var idToDelete string
 
 	server := startTestServer()
-	server.AddHandler(dirclient.RouteThingID, func(response http.ResponseWriter, request *http.Request) {
+	server.AddHandler(dirclient.RouteThingID, func(userID string, response http.ResponseWriter, request *http.Request) {
 		if request.Method == "DELETE" {
 			parts := strings.Split(request.URL.Path, "/")
 			idToDelete = parts[len(parts)-1]

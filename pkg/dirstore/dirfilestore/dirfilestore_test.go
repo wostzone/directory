@@ -100,7 +100,7 @@ func TestList(t *testing.T) {
 	fileStore.Open()
 	addTDs(fileStore)
 
-	items := fileStore.List(0, 0)
+	items := fileStore.List(0, 0, nil)
 	assert.Greater(t, len(items), 0)
 	item1 := items[0]
 	require.NotNil(t, item1)
@@ -119,12 +119,12 @@ func TestQuery(t *testing.T) {
 	for i = 0; i < 1; i++ {
 
 		// regular filter
-		res, err := fileStore.Query(`$[?(@.id=="thing1")]`, 0, 1)
+		res, err := fileStore.Query(`$[?(@.id=="thing1")]`, 0, 1, nil)
 		assert.NoError(t, err)
 		assert.NotEmpty(t, res)
 
 		// regular nested filter comparison
-		res, err = fileStore.Query(`$[?(@.properties.title.value=="title1")]`, 0, 0)
+		res, err = fileStore.Query(`$[?(@.properties.title.value=="title1")]`, 0, 0, nil)
 		assert.NoError(t, err)
 		assert.NotEmpty(t, res)
 
@@ -132,7 +132,7 @@ func TestQuery(t *testing.T) {
 		//res, err = fileStore.Query(`$[?(@.properties.title.value=="title1")]`, 0, 0)
 		// res, err = fileStore.Query(`$[?(@.*.title.value=="title1")]`, 0, 0)
 		// res, err = fileStore.Query(`$[?(@['properties']['title']['value']=="title1")]`, 0, 0)
-		res, err = fileStore.Query(`$[?(@..title.value=="title1")]`, 0, 0)
+		res, err = fileStore.Query(`$[?(@..title.value=="title1")]`, 0, 0, nil)
 
 		// these only return the properties - not good
 		// res, err = fileStore.Query(`$.*.properties[?(@.value=="title1")]`, 0, 0) // returns list of props, not tds
@@ -142,18 +142,18 @@ func TestQuery(t *testing.T) {
 		assert.NotEmpty(t, res)
 
 		// filter with bracket notation
-		res, err = fileStore.Query(`$[?(@["id"]=="thing1")]`, 0, 0)
+		res, err = fileStore.Query(`$[?(@["id"]=="thing1")]`, 0, 0, nil)
 		assert.NoError(t, err)
 		assert.NotEmpty(t, res)
 
 		// filter with bracket notation and current object literal (for search @type)
 		// only supported by ohler55/ojg
-		res, err = fileStore.Query(`$[?(@['@type']=="sensor")]`, 0, 1)
+		res, err = fileStore.Query(`$[?(@['@type']=="sensor")]`, 0, 1, nil)
 		assert.NoError(t, err)
 		assert.NotEmpty(t, res)
 
 		// bad query expression
-		_, err = fileStore.Query(`$[?(.id=="thing1")]`, 0, 0)
+		_, err = fileStore.Query(`$[?(.id=="thing1")]`, 0, 0, nil)
 		assert.Error(t, err)
 	}
 	d1 := time.Since(t1)
@@ -226,7 +226,7 @@ func TestQueryBracketNotationB(t *testing.T) {
 	fileStore.Replace(id2, td2)
 
 	// query returns 2 sensors. not sure about the sort order
-	res, err := fileStore.Query(queryString, 0, 2)
+	res, err := fileStore.Query(queryString, 0, 2, nil)
 	assert.NoError(t, err)
 	assert.Equal(t, 2, len(res))
 	// item1 := res[0].(map[string]interface{})
@@ -263,7 +263,7 @@ func TestQueryValueProp(t *testing.T) {
 	fileStore.Replace(id1, td1)
 	fileStore.Replace(id2, td2)
 
-	res, err := fileStore.Query(queryString, 0, 2)
+	res, err := fileStore.Query(queryString, 0, 2, nil)
 	require.NoError(t, err)
 	require.NotEmpty(t, res)
 	resJson, _ := json.MarshalIndent(res, " ", " ")
@@ -271,7 +271,26 @@ func TestQueryValueProp(t *testing.T) {
 	// logrus.Infof("query result: %s", resJson)
 
 	fileStore.Close()
+}
 
+func TestQueryAclFilter(t *testing.T) {
+	queryString := "$..id"
+	fileStore := makeFileStore()
+	fileStore.Open()
+	addTDs(fileStore)
+
+	// result of a normal query
+	result, err := fileStore.Query(queryString, 0, 0, nil)
+	assert.NoError(t, err)
+	assert.NotEmpty(t, result)
+
+	// authorize access to Thing1 only
+	result, err = fileStore.Query(queryString, 0, 0,
+		func(thingID string) bool {
+			return thingID == Thing1ID
+		})
+	assert.NoError(t, err)
+	assert.Equal(t, 1, len(result))
 }
 
 // Test of merging two TDs

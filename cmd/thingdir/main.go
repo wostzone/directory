@@ -9,7 +9,7 @@ import (
 	"github.com/wostzone/wostlib-go/pkg/hubconfig"
 )
 
-// main entry point for thingdir-pb protocol binding
+// main entry point for the thingdir protocol binding service
 func main() {
 	// with defaults
 	thingdirConfig := &thingdirpb.ThingDirPBConfig{}

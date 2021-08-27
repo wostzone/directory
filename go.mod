@@ -9,9 +9,12 @@ require (
 	github.com/ohler55/ojg v1.12.1
 	github.com/sirupsen/logrus v1.8.1
 	github.com/stretchr/testify v1.7.0
-	github.com/wostzone/wostlib-go v0.0.0-20210804043428-0505ddce2f64
+	github.com/wostzone/hubauth v0.0.0-00010101000000-000000000000
+	github.com/wostzone/wostlib-go v0.0.0-20210805035841-589d2e84b7fb
 	gopkg.in/check.v1 v1.0.0-20190902080502-41f04d3bba15 // indirect
 )
 
 // Until stable
 replace github.com/wostzone/wostlib-go => ../wostlib-go
+
+replace github.com/wostzone/hubauth => ../hubauth

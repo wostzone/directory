@@ -23,6 +23,7 @@ import (
 	"github.com/imdario/mergo"
 	"github.com/ohler55/ojg/jp"
 	"github.com/sirupsen/logrus"
+	"github.com/wostzone/wostlib-go/pkg/td"
 )
 
 // Max nr of items to return in list
@@ -144,11 +145,13 @@ func (store *DirFileStore) Close() {
 }
 
 // Get a document by its ID
+//  id of the thing to look up
 // Returns an error if it doesn't exist
-func (store *DirFileStore) Get(id string) (interface{}, error) {
+func (store *DirFileStore) Get(thingID string) (interface{}, error) {
 	store.mutex.Lock()
 	defer store.mutex.Unlock()
-	doc, ok := store.docs[id]
+
+	doc, ok := store.docs[thingID]
 	if !ok {
 		return nil, fmt.Errorf("not found")
 	}
@@ -158,8 +161,9 @@ func (store *DirFileStore) Get(id string) (interface{}, error) {
 // Return a list of documents
 //  offset is the offset in the document list that is sorted by document ID
 //  limit is the maximum nr of documents to return or 0 for the default
+//  aclFilter filters the things by ID. Use nil to ignore.
 // This returns an empty list if offset is equal or larger than the available nr of documents
-func (store *DirFileStore) List(offset int, limit int) []interface{} {
+func (store *DirFileStore) List(offset int, limit int, aclFilter func(thingID string) bool) []interface{} {
 
 	if limit <= 0 {
 		limit = DefaultListLimit
@@ -169,7 +173,9 @@ func (store *DirFileStore) List(offset int, limit int) []interface{} {
 	defer store.mutex.Unlock()
 	keyList := make([]string, 0)
 	for key := range store.docs {
-		keyList = append(keyList, key)
+		if aclFilter == nil || aclFilter(key) {
+			keyList = append(keyList, key)
+		}
 	}
 	sort.Strings(keyList)
 	sortedDocs := make([]interface{}, len(keyList))
@@ -227,7 +233,8 @@ func (store *DirFileStore) Patch(id string, src map[string]interface{}) error {
 //  jsonPath contains the query
 //  offset contains the offset in the list of results, sorted by ID
 //  limit contains the maximum or of responses, 0 for the default 100
-func (store *DirFileStore) Query(jsonPath string, offset int, limit int) ([]interface{}, error) {
+func (store *DirFileStore) Query(jsonPath string, offset int, limit int,
+	aclFilter func(thingID string) bool) ([]interface{}, error) {
 	//  "github.com/PaesslerAG/jsonpath" - just works, amazing!
 	// Unfortunately no filter with bracket notation $[? @.["title"]=="my title"]
 	// res, err := jsonpath.Get(jsonPath, store.docs)
@@ -240,18 +247,39 @@ func (store *DirFileStore) Query(jsonPath string, offset int, limit int) ([]inte
 	if limit == 0 {
 		limit = store.maxLimit
 	}
-	for key, item := range store.docs {
-		logrus.Infof("store item: key='%s', val='%v'", key, item)
+
+	// Before querying the list of available documents must be reduced to those that the
+	// user has access to.
+	docsToQuery := store.docs
+	if aclFilter != nil {
+		// the aclFilter must be efficient
+		filterResults := make(map[string]interface{})
+		for _, tdDoc := range store.docs {
+			// this is suppoed to be a valid TD document but need to make sure
+			// thingTD, ok := tdDoc.(td.ThingTD)
+			thingTD, ok := tdDoc.(map[string]interface{})
+			if ok {
+				thingID := td.GetID(thingTD)
+				if aclFilter(thingID) {
+					filterResults[thingID] = thingTD
+				}
+			}
+		}
+		docsToQuery = filterResults
 	}
+
+	// for key, item := range store.docs {
+	// 	logrus.Infof("store item: key='%s', val='%v'", key, item)
+	// }
 	// Note: store.docs is a map but query returns a list. The key is lost
 	// Does the same query always returns the same order?
-	// TODO: sort the result
-	res := jpExpr.Get(store.docs)
+	// TODO: sort the result to ensure same results when using paging
+	qResults := jpExpr.Get(docsToQuery)
 
-	if offset > 0 || limit < len(res) {
-		res = res[offset:limit]
+	if offset > 0 || limit < len(qResults) {
+		qResults = qResults[offset:limit]
 	}
-	return res, err
+	return qResults, err
 }
 
 // Remove a document from the store

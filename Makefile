@@ -3,7 +3,7 @@ DIST_FOLDER=./dist
 
 FORCE: help
 
-all: thingdir-pb ## Build package with binary distribution and config
+all: thingdir ## Build package with binary distribution and config
 
 test: FORCE ## Run tests (stop on first error, don't run parallel)
 		go test -failfast -p 1 -v ./pkg/...
@@ -20,7 +20,7 @@ clean: ## Clean distribution files
 	rm -f $(DIST_FOLDER)/bin/*
 	rm -f $(DIST_FOLDER)/arm/*
 
-thingdir-pb: ## Build thingdir-pb plugin
+thingdir: ## Build thingdir-pb plugin
 	mkdir -p $(DIST_FOLDER)/bin
 	go build -o $(DIST_FOLDER)/bin/$@ ./cmd/$@/main.go
 	@echo "> SUCCESS. Plugin '$@' can be found at $(DIST_FOLDER)/bin/$@ and $(DIST_FOLDER)/arm/$@"
