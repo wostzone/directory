@@ -12,8 +12,8 @@
 #dirAddress: "localhost"
 
 # Directory service HTTPS listening port. Use the plugin default port by default.
-# The default port is hard coded as  in thingdir-go/pkg/dirclient/DirClient.go:DefaultPort
-#dirPort: 0
+# The default port is 43777 as defined in thingdir-go/pkg/dirclient/DirClient.go:DefaultPort
+#dirPort: 43777
 
 # Folder with the directory files. Default is the config folder
 # If a relative path is used it is relative to the home folder, eg parent of bin
