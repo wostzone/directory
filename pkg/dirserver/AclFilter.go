@@ -2,7 +2,7 @@ package dirserver
 
 import (
 	"github.com/wostzone/hubauth/pkg/authorize"
-	"github.com/wostzone/wostlib-go/pkg/certsetup"
+	"github.com/wostzone/hubserve-go/pkg/certsetup"
 )
 
 // ACL filter function for authorization of thing access

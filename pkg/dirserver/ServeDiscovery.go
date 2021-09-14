@@ -3,7 +3,7 @@ package dirserver
 import (
 	"github.com/grandcat/zeroconf"
 	"github.com/sirupsen/logrus"
-	"github.com/wostzone/wostlib-go/pkg/discovery"
+	"github.com/wostzone/hubserve-go/pkg/discovery"
 )
 
 const ThingDirServiceDiscoveryType = "thingdir"

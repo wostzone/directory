@@ -8,8 +8,8 @@ import (
 	"strings"
 
 	"github.com/sirupsen/logrus"
-	"github.com/wostzone/wostlib-go/pkg/certsetup"
-	"github.com/wostzone/wostlib-go/pkg/td"
+	"github.com/wostzone/hubclient-go/pkg/td"
+	"github.com/wostzone/hubserve-go/pkg/certsetup"
 )
 
 // AclReadFilter determines read access to a thing TD. Intended for querying things.
@@ -80,12 +80,7 @@ func (srv *DirectoryServer) ServeDeleteTD(userID, certOU, thingID string, respon
 		return
 	}
 
-	err := srv.store.Remove(thingID)
-	if err != nil {
-		msg := fmt.Sprintf("ServeDeleteTD: '%s'", err)
-		srv.tlsServer.WriteInternalError(response, msg)
-		return
-	}
+	srv.store.Remove(thingID)
 	// should we return the original? no, return 204
 }
 
@@ -102,12 +97,10 @@ func (srv *DirectoryServer) ServePatchTD(userID, certOU, thingID string, respons
 
 	if err == nil {
 		err = json.Unmarshal(body, &td)
-		if err != nil || td == nil {
-			srv.tlsServer.WriteBadRequest(response, fmt.Sprintf("ServePatchTD: %s", err))
-			return
-		}
 	}
-	err = srv.store.Patch(thingID, td)
+	if err == nil {
+		err = srv.store.Patch(thingID, td)
+	}
 	if err != nil {
 		srv.tlsServer.WriteBadRequest(response, fmt.Sprintf("ServePatchTD: %s", err))
 		return
@@ -123,13 +116,12 @@ func (srv *DirectoryServer) ServeReplaceTD(userID, certOU, thingID string, respo
 
 	td := make(map[string]interface{})
 	body, err := ioutil.ReadAll(request.Body)
-
 	if err == nil {
 		err = json.Unmarshal(body, &td)
-		if err != nil {
-			srv.tlsServer.WriteBadRequest(response, fmt.Sprintf("ServeReplaceTD: %s", err))
-			return
-		}
+	}
+	if err != nil {
+		srv.tlsServer.WriteBadRequest(response, fmt.Sprintf("ServeReplaceTD: %s", err))
+		return
 	}
 	existingTD, _ := srv.store.Get(thingID)
 
@@ -137,7 +129,8 @@ func (srv *DirectoryServer) ServeReplaceTD(userID, certOU, thingID string, respo
 	if err != nil {
 		srv.tlsServer.WriteBadRequest(response, fmt.Sprintf("ServeReplaceTD: %s", err))
 		return
-	} else if existingTD != nil {
+	}
+	if existingTD != nil {
 		// return 200 (OK)
 		// default
 	} else {

@@ -2,13 +2,15 @@
 package dirclient
 
 import (
+	"crypto/tls"
+	"crypto/x509"
 	"encoding/json"
 	"fmt"
 	"strings"
 
 	"github.com/sirupsen/logrus"
-	"github.com/wostzone/wostlib-go/pkg/td"
-	"github.com/wostzone/wostlib-go/pkg/tlsclient"
+	"github.com/wostzone/hubclient-go/pkg/td"
+	"github.com/wostzone/hubclient-go/pkg/tlsclient"
 )
 
 // Constants for use by server and applications
@@ -32,8 +34,7 @@ const MaxLimit = 1000
 // DirClient is a client for the WoST Directory service
 // Intended for updating and reading TDs
 type DirClient struct {
-	address   string // address of the directory server, "" if unknown
-	port      uint   // port of the directory server, 0 if unknown
+	hostport  string // address:port of the directory server, "" if unknown
 	tlsClient *tlsclient.TLSClient
 }
 
@@ -47,8 +48,8 @@ func (dc *DirClient) Close() {
 // ConnectWithCertificate open the connection to the directory server using a client certificate for authentication
 //  clientCertFile  client certificate to authenticate the client with the broker
 //  clientKeyFile   client key to authenticate the client with the broker
-func (dc *DirClient) ConnectWithClientCert(clientCertPath string, clientKeyPath string) error {
-	err := dc.tlsClient.ConnectWithClientCert(clientCertPath, clientKeyPath)
+func (dc *DirClient) ConnectWithClientCert(tlsClientCert *tls.Certificate) error {
+	err := dc.tlsClient.ConnectWithClientCert(tlsClientCert)
 	return err
 }
 
@@ -64,7 +65,7 @@ func (dc *DirClient) ConnectWithLoginID(loginID string, password string) error {
 func (dc *DirClient) Delete(id string) error {
 	path := strings.Replace(RouteThingID, "{thingID}", id, 1)
 
-	_, err := dc.tlsClient.Invoke("DELETE", path, nil)
+	_, err := dc.tlsClient.Delete(path, nil)
 	return err
 }
 
@@ -107,7 +108,7 @@ func (dc *DirClient) PatchTD(id string, td td.ThingTD) error {
 	var resp []byte
 	var err error
 	path := strings.Replace(RouteThingID, "{thingID}", id, 1)
-	resp, err = dc.tlsClient.Invoke("PATCH", path, td)
+	resp, err = dc.tlsClient.Patch(path, td)
 	_ = resp
 	return err
 }
@@ -121,7 +122,7 @@ func (dc *DirClient) PatchTD(id string, td td.ThingTD) error {
 func (dc *DirClient) QueryTDs(jsonpath string, offset int, limit int) ([]td.ThingTD, error) {
 	var tdList []td.ThingTD
 	path := fmt.Sprintf("%s?queryparams=%s&offset=%d&limit=%d", RouteThings, jsonpath, offset, limit)
-	response, err := dc.tlsClient.Invoke("GET", path, nil)
+	response, err := dc.tlsClient.Get(path)
 	if err != nil {
 		return nil, err
 	}
@@ -136,7 +137,7 @@ func (dc *DirClient) UpdateTD(id string, td td.ThingTD) error {
 	var err error
 	path := strings.Replace(RouteThingID, "{thingID}", id, 1)
 	resp, err = dc.tlsClient.Post(path, td)
-	// resp, err = dc.tlsClient.Invoke("POST", path, doc)
+	// resp, err = dc.tlsClient.Post(path, doc)
 	_ = resp
 	return err
 }
@@ -145,11 +146,10 @@ func (dc *DirClient) UpdateTD(id string, td td.ThingTD) error {
 //  address is the listening address of the client
 //  port to connect to
 //  caCertPath server CA certificate for verification, obtained during provisioning using idprov
-func NewDirClient(address string, port uint, caCertPath string) *DirClient {
-	tlsClient, _ := tlsclient.NewTLSClient(address, port, caCertPath)
+func NewDirClient(hostport string, caCert *x509.Certificate) *DirClient {
+	tlsClient := tlsclient.NewTLSClient(hostport, caCert)
 	dc := &DirClient{
-		address:   address,
-		port:      port,
+		hostport:  hostport,
 		tlsClient: tlsClient,
 	}
 	return dc

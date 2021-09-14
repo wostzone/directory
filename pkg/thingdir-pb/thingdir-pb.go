@@ -1,6 +1,7 @@
 package thingdirpb
 
 import (
+	"fmt"
 	"path"
 
 	"github.com/sirupsen/logrus"
@@ -8,11 +9,11 @@ import (
 	"github.com/wostzone/hubauth/pkg/authenticate"
 	"github.com/wostzone/hubauth/pkg/authorize"
 	"github.com/wostzone/hubauth/pkg/unpwstore"
-	"github.com/wostzone/thingdir-go/pkg/dirclient"
-	"github.com/wostzone/thingdir-go/pkg/dirserver"
-	"github.com/wostzone/wostlib-go/pkg/certsetup"
-	"github.com/wostzone/wostlib-go/pkg/hubclient"
-	"github.com/wostzone/wostlib-go/pkg/hubconfig"
+	"github.com/wostzone/hubclient-go/pkg/certs"
+	"github.com/wostzone/hubclient-go/pkg/config"
+	"github.com/wostzone/hubclient-go/pkg/mqttclient"
+	"github.com/wostzone/thingdir/pkg/dirclient"
+	"github.com/wostzone/thingdir/pkg/dirserver"
 )
 
 const PluginID = "thingdir-pb"
@@ -51,10 +52,10 @@ type ThingDirPBConfig struct {
 // Thing Directory Protocol Binding for the WoST Hub
 type ThingDirPB struct {
 	config        ThingDirPBConfig
-	hubConfig     hubconfig.HubConfig
+	hubConfig     config.HubConfig
 	dirServer     *dirserver.DirectoryServer
 	dirClient     *dirclient.DirClient
-	hubClient     *hubclient.MqttHubClient
+	hubClient     *mqttclient.MqttHubClient
 	authenticator authenticate.VerifyUsernamePassword
 	authorizer    authorize.VerifyAuthorization
 }
@@ -68,6 +69,11 @@ func (pb *ThingDirPB) Start() error {
 	logrus.Infof("ThingDirPB.Start")
 	var err error
 
+	serverCert, err := certs.LoadTLSCertFromPEM(pb.config.ServerCertPath, pb.config.ServerKeyPath)
+	if err != nil {
+		return err
+	}
+
 	// First get the directory server up and running, if not disabled
 	if !pb.config.DisableDirServer {
 		pb.dirServer = dirserver.NewDirectoryServer(
@@ -75,7 +81,7 @@ func (pb *ThingDirPB) Start() error {
 			pb.config.DirectoryStoreFolder,
 			pb.config.DirAddress, pb.config.DirPort,
 			pb.config.ServiceName,
-			pb.config.ServerCertPath, pb.config.ServerKeyPath, pb.config.ServerCaPath,
+			serverCert, pb.hubConfig.CaCert,
 			pb.authenticator,
 			pb.authorizer)
 
@@ -85,14 +91,16 @@ func (pb *ThingDirPB) Start() error {
 		}
 	}
 	// connect a client to the directory server for use by the protocol binding
-	pb.dirClient = dirclient.NewDirClient(pb.config.DirAddress, pb.config.DirPort, pb.config.PbClientCaPath)
-	err = pb.dirClient.ConnectWithClientCert(pb.config.PbClientCertPath, pb.config.PbClientKeyPath)
+	dirHostPort := fmt.Sprintf("%s:%d", pb.config.DirAddress, pb.config.DirPort)
+	pb.dirClient = dirclient.NewDirClient(dirHostPort, pb.hubConfig.CaCert)
+	err = pb.dirClient.ConnectWithClientCert(pb.hubConfig.PluginCert)
 	if err != nil {
 		return err
 	}
 
-	// last, start listening to TD updates on the message bus
-	err = pb.hubClient.Connect()
+	// last, start listening to TD updates on the message bus; use the same client certificate
+	mqttHostPort := fmt.Sprintf("%s:%d", pb.hubConfig.MqttAddress, pb.hubConfig.MqttPortCert)
+	err = pb.hubClient.ConnectWithClientCert(mqttHostPort, pb.hubConfig.PluginCert)
 	if err != nil {
 		return err
 	}
@@ -120,70 +128,70 @@ func (pb *ThingDirPB) Stop() {
 // therefore match that of the certificate. Default is the hub's mqtt address.
 //  config with the plugin configuration and overrides from the defaults
 //  hubConfig with default server address and certificate folder
-func NewThingDirPB(config *ThingDirPBConfig, hubConfig *hubconfig.HubConfig) *ThingDirPB {
+func NewThingDirPB(thingdirconf *ThingDirPBConfig, hubConfig *config.HubConfig) *ThingDirPB {
 
 	// Directory server defaults when using the built-in server
-	if config.DirAddress == "" {
-		config.DirAddress = hubConfig.MqttAddress
+	if thingdirconf.DirAddress == "" {
+		thingdirconf.DirAddress = hubConfig.MqttAddress
 	}
-	if config.DirPort == 0 {
-		config.DirPort = dirclient.DefaultPort
+	if thingdirconf.DirPort == 0 {
+		thingdirconf.DirPort = dirclient.DefaultPort
 	}
-	if config.DirectoryStoreFolder == "" {
-		config.DirectoryStoreFolder = hubConfig.ConfigFolder
+	if thingdirconf.DirectoryStoreFolder == "" {
+		thingdirconf.DirectoryStoreFolder = hubConfig.ConfigFolder
 	}
-	if config.ServiceName == "" {
-		config.ServiceName = dirclient.DefaultServiceName
+	if thingdirconf.ServiceName == "" {
+		thingdirconf.ServiceName = dirclient.DefaultServiceName
 	}
-	if !config.EnableDiscovery {
-		config.ServiceName = ""
+	if !thingdirconf.EnableDiscovery {
+		thingdirconf.ServiceName = ""
 	}
-	if config.ServerCertPath == "" {
-		config.ServerCertPath = path.Join(hubConfig.CertsFolder, certsetup.HubCertFile)
+	if thingdirconf.ServerCertPath == "" {
+		thingdirconf.ServerCertPath = path.Join(hubConfig.CertsFolder, config.DefaultServerCertFile)
 	}
-	if config.ServerKeyPath == "" {
-		config.ServerKeyPath = path.Join(hubConfig.CertsFolder, certsetup.HubKeyFile)
+	if thingdirconf.ServerKeyPath == "" {
+		thingdirconf.ServerKeyPath = path.Join(hubConfig.CertsFolder, config.DefaultServerKeyFile)
 	}
-	if config.ServerCaPath == "" {
-		config.ServerCaPath = path.Join(hubConfig.CertsFolder, certsetup.CaCertFile)
+	if thingdirconf.ServerCaPath == "" {
+		thingdirconf.ServerCaPath = path.Join(hubConfig.CertsFolder, config.DefaultCaCertFile)
 	}
 
 	// Directory client defaults
-	if config.PbClientID == "" {
-		config.PbClientID = PluginID
+	if thingdirconf.PbClientID == "" {
+		thingdirconf.PbClientID = PluginID
 	}
-	if config.PbClientCaPath == "" {
-		config.PbClientCaPath = path.Join(hubConfig.CertsFolder, certsetup.CaCertFile)
+	if thingdirconf.PbClientCaPath == "" {
+		thingdirconf.PbClientCaPath = path.Join(hubConfig.CertsFolder, config.DefaultCaCertFile)
 	}
-	if config.PbClientCertPath == "" {
-		config.PbClientCertPath = path.Join(hubConfig.CertsFolder, certsetup.PluginCertFile)
+	if thingdirconf.PbClientCertPath == "" {
+		thingdirconf.PbClientCertPath = path.Join(hubConfig.CertsFolder, config.DefaultPluginCertFile)
 	}
-	if config.PbClientKeyPath == "" {
-		config.PbClientKeyPath = path.Join(hubConfig.CertsFolder, certsetup.PluginKeyFile)
+	if thingdirconf.PbClientKeyPath == "" {
+		thingdirconf.PbClientKeyPath = path.Join(hubConfig.CertsFolder, config.DefaultPluginKeyFile)
 	}
 
 	// Message bus client defaults
-	if config.MsgbusCertPath == "" {
-		config.MsgbusCertPath = path.Join(hubConfig.CertsFolder, certsetup.PluginCertFile)
+	if thingdirconf.MsgbusCertPath == "" {
+		thingdirconf.MsgbusCertPath = path.Join(hubConfig.CertsFolder, config.DefaultPluginCertFile)
 	}
-	if config.MsgbusKeyPath == "" {
-		config.MsgbusKeyPath = path.Join(hubConfig.CertsFolder, certsetup.PluginKeyFile)
+	if thingdirconf.MsgbusKeyPath == "" {
+		thingdirconf.MsgbusKeyPath = path.Join(hubConfig.CertsFolder, config.DefaultPluginKeyFile)
 	}
-	if config.MsgbusCaPath == "" {
-		config.MsgbusCaPath = path.Join(hubConfig.CertsFolder, certsetup.CaCertFile)
+	if thingdirconf.MsgbusCaPath == "" {
+		thingdirconf.MsgbusCaPath = path.Join(hubConfig.CertsFolder, config.DefaultCaCertFile)
 	}
 
 	// The file based stores are the only option for now
-	aclFile := hubConfig.AclStorePath
+	aclFile := aclstore.DefaultAclFile
 	aclStore := aclstore.NewAclFileStore(aclFile, "ThingDirPB")
 
-	unpwFile := hubConfig.UnpwStorePath
+	unpwFile := unpwstore.DefaultPasswordFile
 	unpwStore := unpwstore.NewPasswordFileStore(unpwFile, "ThingDirPB")
 
 	tdir := ThingDirPB{
-		config:        *config,
+		config:        *thingdirconf,
 		hubConfig:     *hubConfig,
-		hubClient:     hubclient.NewMqttHubPluginClient(PluginID, hubConfig),
+		hubClient:     mqttclient.NewMqttHubClient(PluginID, hubConfig.CaCert),
 		authenticator: authenticate.NewAuthenticator(unpwStore).VerifyUsernamePassword,
 		authorizer:    authorize.NewAuthorizer(aclStore).VerifyAuthorization,
 	}

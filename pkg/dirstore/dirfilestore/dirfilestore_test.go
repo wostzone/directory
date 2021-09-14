@@ -11,10 +11,10 @@ import (
 	"github.com/sirupsen/logrus"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	"github.com/wostzone/thingdir-go/pkg/dirstore"
-	"github.com/wostzone/thingdir-go/pkg/dirstore/dirfilestore"
-	"github.com/wostzone/wostlib-go/pkg/td"
-	"github.com/wostzone/wostlib-go/pkg/vocab"
+	"github.com/wostzone/hubclient-go/pkg/td"
+	"github.com/wostzone/hubclient-go/pkg/vocab"
+	"github.com/wostzone/thingdir/pkg/dirstore"
+	"github.com/wostzone/thingdir/pkg/dirstore/dirfilestore"
 )
 
 const (
@@ -321,4 +321,22 @@ func TestPatch(t *testing.T) {
 	// val := thing2b["title2"]
 	assert.Equal(t, "value2", val)
 	fileStore.Close()
+}
+
+func TestBadPatch(t *testing.T) {
+	fileStore := makeFileStore()
+	fileStore.Open()
+
+	id2 := "thing2"
+	err := fileStore.Patch(id2, nil)
+	assert.Error(t, err)
+}
+
+func TestBadReplace(t *testing.T) {
+	fileStore := makeFileStore()
+	fileStore.Open()
+
+	id2 := "thing2"
+	err := fileStore.Replace(id2, nil)
+	assert.Error(t, err)
 }

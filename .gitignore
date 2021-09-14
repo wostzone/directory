@@ -24,3 +24,4 @@ dist/logs/*
 
 # temp files for testing
 test/config/directory.json
+test/config/mosquitto-testsetup.conf

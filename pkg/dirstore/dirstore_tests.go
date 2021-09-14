@@ -40,8 +40,7 @@ func DirStoreCrud(t *testing.T, store IDirStore) {
 	time.Sleep(time.Second * 10)
 
 	// Delete
-	err = store.Remove(thingID)
-	assert.NoError(t, err)
+	store.Remove(thingID)
 	_, err = store.Get(thingID)
 	assert.Error(t, err)
 

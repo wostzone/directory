@@ -2,41 +2,38 @@ package dirclient_test
 
 import (
 	"encoding/json"
+	"fmt"
 	"io/ioutil"
 	"net/http"
 	"os"
-	"path"
 	"strings"
 	"testing"
 
 	"github.com/sirupsen/logrus"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	"github.com/wostzone/thingdir-go/pkg/dirclient"
-	"github.com/wostzone/wostlib-go/pkg/certsetup"
-	"github.com/wostzone/wostlib-go/pkg/hubnet"
-	"github.com/wostzone/wostlib-go/pkg/td"
-	"github.com/wostzone/wostlib-go/pkg/tlsserver"
-	"github.com/wostzone/wostlib-go/pkg/vocab"
+	"github.com/wostzone/hubclient-go/pkg/td"
+	"github.com/wostzone/hubclient-go/pkg/testenv"
+	"github.com/wostzone/hubclient-go/pkg/vocab"
+	"github.com/wostzone/hubserve-go/pkg/tlsserver"
+	"github.com/wostzone/thingdir/pkg/dirclient"
 )
 
 var testDirectoryAddr string
 
 const testDirectoryPort = 9990
 
-var serverCertFolder string
-var caCertPath string
-var pluginCertPath string
-var pluginKeyPath string
+var testCerts testenv.TestCerts
+
+// var caCertPath string
+// var pluginCertPath string
+// var pluginKeyPath string
 
 /*
  */
 func startTestServer() *tlsserver.TLSServer {
-	serverCertPath := path.Join(serverCertFolder, certsetup.HubCertFile)
-	serverKeyPath := path.Join(serverCertFolder, certsetup.HubKeyFile)
 	server := tlsserver.NewTLSServer(testDirectoryAddr, testDirectoryPort,
-		serverCertPath, serverKeyPath, caCertPath,
-		nil)
+		testCerts.ServerCert, testCerts.CaCert, nil)
 
 	// Todo test with auth
 
@@ -47,21 +44,8 @@ func startTestServer() *tlsserver.TLSServer {
 // test setup. Run tests with -p 1 as this test environment doesn't handle concurrent tests
 func TestMain(m *testing.M) {
 	logrus.Infof("------ TestMain of DirectoryClient ------")
-	testDirectoryAddr = hubnet.GetOutboundIP("").String()
-	hostnames := []string{testDirectoryAddr}
-
-	cwd, _ := os.Getwd()
-	homeFolder := path.Join(cwd, "../../test")
-	serverCertFolder = path.Join(homeFolder, "certs")
-	// certStoreFolder = path.Join(homeFolder, "certstore")
-	// storePath := path.Join(homeFolder, "config")
-
-	// Start test with new certificates
-	logrus.Infof("Creating certificate bundle for names: %s", hostnames)
-	certsetup.CreateCertificateBundle(hostnames, serverCertFolder)
-	pluginCertPath = path.Join(serverCertFolder, certsetup.PluginCertFile)
-	pluginKeyPath = path.Join(serverCertFolder, certsetup.PluginKeyFile)
-	caCertPath = path.Join(serverCertFolder, certsetup.CaCertFile)
+	testDirectoryAddr = "127.0.0.1"
+	testCerts = testenv.CreateCertBundle()
 
 	res := m.Run()
 	os.Exit(res)
@@ -77,16 +61,17 @@ func TestConnectClose(t *testing.T) {
 		//return
 	})
 	//
-	dirClient := dirclient.NewDirClient(testDirectoryAddr, testDirectoryPort, caCertPath)
+	hostPort := fmt.Sprintf("%s:%d", testDirectoryAddr, testDirectoryPort)
+	dirClient := dirclient.NewDirClient(hostPort, testCerts.CaCert)
 
-	err := dirClient.ConnectWithClientCert(pluginCertPath, pluginKeyPath)
+	err := dirClient.ConnectWithClientCert(testCerts.PluginCert)
 	assert.NoError(t, err)
 	_, err = dirClient.ListTDs(0, 0)
 	assert.NoError(t, err)
 	dirClient.Close()
 
 	// server isn't setup with username password login so login endpoint is not found
-	dirClient = dirclient.NewDirClient(testDirectoryAddr, testDirectoryPort, caCertPath)
+	dirClient = dirclient.NewDirClient(hostPort, testCerts.CaCert)
 	err = dirClient.ConnectWithLoginID("user1", "pass1")
 	assert.Error(t, err)
 	// without server auth this should still succeed
@@ -129,9 +114,9 @@ func TestUpdateTD(t *testing.T) {
 		}
 		assert.NoError(t, err2)
 	})
-
-	dirClient := dirclient.NewDirClient(testDirectoryAddr, testDirectoryPort, caCertPath)
-	err := dirClient.ConnectWithClientCert(pluginCertPath, pluginKeyPath)
+	hostPort := fmt.Sprintf("%s:%d", testDirectoryAddr, testDirectoryPort)
+	dirClient := dirclient.NewDirClient(hostPort, testCerts.CaCert)
+	err := dirClient.ConnectWithClientCert(testCerts.PluginCert)
 	require.NoError(t, err)
 
 	// write a TD document
@@ -178,8 +163,9 @@ func TestQueryAndList(t *testing.T) {
 		}
 	})
 
-	dirClient := dirclient.NewDirClient(testDirectoryAddr, testDirectoryPort, caCertPath)
-	err := dirClient.ConnectWithClientCert(pluginCertPath, pluginKeyPath)
+	hostPort := fmt.Sprintf("%s:%d", testDirectoryAddr, testDirectoryPort)
+	dirClient := dirclient.NewDirClient(hostPort, testCerts.CaCert)
+	err := dirClient.ConnectWithClientCert(testCerts.PluginCert)
 	require.NoError(t, err)
 
 	// test query
@@ -215,8 +201,9 @@ func TestDelete(t *testing.T) {
 		}
 	})
 
-	dirClient := dirclient.NewDirClient(testDirectoryAddr, testDirectoryPort, caCertPath)
-	err := dirClient.ConnectWithClientCert(pluginCertPath, pluginKeyPath)
+	hostPort := fmt.Sprintf("%s:%d", testDirectoryAddr, testDirectoryPort)
+	dirClient := dirclient.NewDirClient(hostPort, testCerts.CaCert)
+	err := dirClient.ConnectWithClientCert(testCerts.PluginCert)
 	require.NoError(t, err)
 
 	err = dirClient.Delete(thingID1)

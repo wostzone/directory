@@ -2,6 +2,8 @@
 package dirserver
 
 import (
+	"crypto/tls"
+	"crypto/x509"
 	"path"
 	"time"
 
@@ -9,9 +11,9 @@ import (
 	"github.com/sirupsen/logrus"
 	"github.com/wostzone/hubauth/pkg/authenticate"
 	"github.com/wostzone/hubauth/pkg/authorize"
-	"github.com/wostzone/thingdir-go/pkg/dirclient"
-	"github.com/wostzone/thingdir-go/pkg/dirstore/dirfilestore"
-	"github.com/wostzone/wostlib-go/pkg/tlsserver"
+	"github.com/wostzone/hubserve-go/pkg/tlsserver"
+	"github.com/wostzone/thingdir/pkg/dirclient"
+	"github.com/wostzone/thingdir/pkg/dirstore/dirfilestore"
 )
 
 const DirectoryPluginID = "directory"
@@ -27,14 +29,13 @@ const DefaultDirectoryStoreFile = "directory.json"
 // DirectoryServer for web of things
 type DirectoryServer struct {
 	// config
-	address        string // listening address
-	caCertPath     string // path to CA certificate PEM file
-	instanceID     string // ID of this service
-	port           uint   // listening port
-	serverCertPath string // path to server certificate PEM file
-	serverKeyPath  string // path to server private key PEM file
-	authenticator  authenticate.VerifyUsernamePassword
-	authorizer     authorize.VerifyAuthorization
+	address       string            // listening address
+	caCert        *x509.Certificate // path to CA certificate PEM file
+	instanceID    string            // ID of this service
+	port          uint              // listening port
+	serverCert    *tls.Certificate  // path to server certificate PEM file
+	authenticator authenticate.VerifyUsernamePassword
+	authorizer    authorize.VerifyAuthorization
 
 	// the service name. Use dirclient.DirectoryServiceName for default or "" to disable DNS discovery
 	discoveryName string
@@ -70,7 +71,7 @@ func (srv *DirectoryServer) Start() error {
 		// srv.address = hubconfig.GetOutboundIP("").String()
 		srv.tlsServer = tlsserver.NewTLSServer(
 			srv.address, srv.port,
-			srv.serverCertPath, srv.serverKeyPath, srv.caCertPath,
+			srv.serverCert, srv.caCert,
 			srv.authenticator)
 		err = srv.tlsServer.Start()
 		if err != nil {
@@ -125,9 +126,8 @@ func NewDirectoryServer(
 	address string,
 	port uint,
 	discoveryName string,
-	serverCertPath string,
-	serverKeyPath string,
-	caCertPath string,
+	serverCert *tls.Certificate,
+	caCert *x509.Certificate,
 	authenticator authenticate.VerifyUsernamePassword,
 	authorizer authorize.VerifyAuthorization,
 ) *DirectoryServer {
@@ -138,16 +138,15 @@ func NewDirectoryServer(
 	}
 	storePath := path.Join(storeFolder, DefaultDirectoryStoreFile)
 	srv := DirectoryServer{
-		address:        address,
-		serverCertPath: serverCertPath,
-		serverKeyPath:  serverKeyPath,
-		caCertPath:     caCertPath,
-		discoveryName:  discoveryName,
-		instanceID:     instanceID,
-		port:           port,
-		store:          dirfilestore.NewDirFileStore(storePath),
-		authenticator:  authenticator,
-		authorizer:     authorizer,
+		address:       address,
+		serverCert:    serverCert,
+		caCert:        caCert,
+		discoveryName: discoveryName,
+		instanceID:    instanceID,
+		port:          port,
+		store:         dirfilestore.NewDirFileStore(storePath),
+		authenticator: authenticator,
+		authorizer:    authorizer,
 	}
 	return &srv
 }

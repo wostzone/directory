@@ -1,6 +1,7 @@
 package thingdirpb_test
 
 import (
+	"fmt"
 	"os"
 	"path"
 	"testing"
@@ -8,30 +9,24 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	"github.com/wostzone/thingdir-go/pkg/dirclient"
-	thingdirpb "github.com/wostzone/thingdir-go/pkg/thingdir-pb"
+	"github.com/wostzone/thingdir/pkg/dirclient"
+	thingdirpb "github.com/wostzone/thingdir/pkg/thingdir-pb"
 
 	"github.com/sirupsen/logrus"
-	"github.com/wostzone/wostlib-go/pkg/certsetup"
-	"github.com/wostzone/wostlib-go/pkg/hubclient"
-	"github.com/wostzone/wostlib-go/pkg/hubconfig"
-	"github.com/wostzone/wostlib-go/pkg/td"
-	"github.com/wostzone/wostlib-go/pkg/testenv"
-	"github.com/wostzone/wostlib-go/pkg/vocab"
+	"github.com/wostzone/hubclient-go/pkg/config"
+	"github.com/wostzone/hubclient-go/pkg/mqttclient"
+	"github.com/wostzone/hubclient-go/pkg/td"
+	"github.com/wostzone/hubclient-go/pkg/testenv"
+	"github.com/wostzone/hubclient-go/pkg/vocab"
 )
 
-var certFolder string
+// var certFolder string
+var testCerts testenv.TestCerts
 
 // var serverAddress string
 
-var homeFolder string
-var hubConfig *hubconfig.HubConfig
-
-var caCertPath string
-var serverCertPath string
-var serverKeyPath string
-var pluginCertPath string
-var pluginKeyPath string
+var appFolder string
+var hubConfig config.HubConfig
 
 // TestMain runs a directory server for use by the test cases in this package
 // This uses the directory client in testing
@@ -40,25 +35,25 @@ func TestMain(m *testing.M) {
 	// serverAddress = hubnet.GetOutboundIP("").String()
 
 	cwd, _ := os.Getwd()
-	homeFolder = path.Join(cwd, "../../test")
-	certFolder = path.Join(homeFolder, "certs")
-	hubConfig, _ = hubconfig.LoadHubConfig("", homeFolder, "plugin1")
-	hostnames := []string{hubConfig.MqttAddress}
+	appFolder = path.Join(cwd, "../../test")
+	configFolder := path.Join(appFolder, "config")
+	certFolder := path.Join(appFolder, "certs")
+	os.Chdir(appFolder)
 
-	// make sure the certificates are there
-	certsetup.CreateCertificateBundle(hostnames, certFolder)
-	serverCertPath = path.Join(certFolder, certsetup.HubCertFile)
-	serverKeyPath = path.Join(certFolder, certsetup.HubKeyFile)
-	caCertPath = path.Join(certFolder, certsetup.CaCertFile)
-	pluginCertPath = path.Join(certFolder, certsetup.PluginCertFile)
-	pluginKeyPath = path.Join(certFolder, certsetup.PluginKeyFile)
+	testenv.SetLogging("info", "")
+	testCerts = testenv.CreateCertBundle()
+	mosquittoCmd, err := testenv.StartMosquitto(configFolder, certFolder, &testCerts)
+	if err != nil {
+		logrus.Fatalf("Unable to start mosquitto: %s", err)
+	}
 
-	// start a mqtt test server
-	mosquittoCmd := testenv.Setup(homeFolder, hubConfig.MqttPortCert, hubConfig.MqttPortWS)
+	hubConfig = *config.CreateDefaultHubConfig(appFolder)
+	configFile := path.Join(configFolder, "hub.yaml")
+	_ = config.LoadHubConfig(configFile, thingdirpb.PluginID, &hubConfig)
 
 	res := m.Run()
 
-	testenv.Teardown(mosquittoCmd)
+	mosquittoCmd.Process.Kill()
 
 	os.Exit(res)
 }
@@ -66,19 +61,18 @@ func TestMain(m *testing.M) {
 func TestStartStopThingDirectoryService(t *testing.T) {
 	// tdirConfig := &thingdirpb.ThingDirPBConfig{DirAddress: hubConfig.MqttAddress}
 	tdirConfig := &thingdirpb.ThingDirPBConfig{}
-	hubConfig, err := hubconfig.LoadHubConfig("", homeFolder, thingdirpb.PluginID)
-	assert.NoError(t, err)
-	err = hubconfig.LoadPluginConfig(hubConfig.ConfigFolder, thingdirpb.PluginID, &tdirConfig, nil)
+	configFile := path.Join(hubConfig.ConfigFolder, thingdirpb.PluginID+".yaml")
+	err := config.LoadYamlConfig(configFile, &tdirConfig, nil)
 
-	// hubConfig, err := hubconfig.LoadCommandlineConfig(homeFolder, thingdirpb.PluginID, &tdirConfig)
+	// hubConfig, err := config.LoadCommandlineConfig(homeFolder, thingdirpb.PluginID, &tdirConfig)
 	assert.NoError(t, err)
-
-	tdirPB := thingdirpb.NewThingDirPB(tdirConfig, hubConfig)
+	tdirPB := thingdirpb.NewThingDirPB(tdirConfig, &hubConfig)
 	err = tdirPB.Start()
 	assert.NoError(t, err)
 
-	tdirClient := dirclient.NewDirClient(tdirConfig.DirAddress, tdirConfig.DirPort, caCertPath)
-	err = tdirClient.ConnectWithClientCert(pluginCertPath, pluginKeyPath)
+	dirHostPort := fmt.Sprintf("%s:%d", testenv.ServerAddress, tdirConfig.DirPort)
+	tdirClient := dirclient.NewDirClient(dirHostPort, hubConfig.CaCert)
+	err = tdirClient.ConnectWithClientCert(hubConfig.PluginCert)
 	assert.NoError(t, err)
 
 	_, err = tdirClient.ListTDs(0, 0)
@@ -92,38 +86,42 @@ func TestStartStopThingDirectoryService(t *testing.T) {
 func TestStartThingDirBadAddress(t *testing.T) {
 	// tdirConfig := &thingdirpb.ThingDirPBConfig{DirAddress: hubConfig.MqttAddress}
 	tdirConfig := &thingdirpb.ThingDirPBConfig{}
-	hubConfig, err := hubconfig.LoadHubConfig("", homeFolder, thingdirpb.PluginID)
-	hubConfig.MqttAddress = "wrongaddress"
-	assert.NoError(t, err)
+	hc := hubConfig // copy
+	hc.MqttAddress = "wrongaddress"
 
-	tdirPB := thingdirpb.NewThingDirPB(tdirConfig, hubConfig)
-	err = tdirPB.Start()
+	tdirPB := thingdirpb.NewThingDirPB(tdirConfig, &hc)
+	err := tdirPB.Start()
 	assert.Error(t, err)
 }
 
 func TestUpdateTD(t *testing.T) {
 	tdirConfig := &thingdirpb.ThingDirPBConfig{DirAddress: hubConfig.MqttAddress}
-	hubConfig, err := hubconfig.LoadHubConfig("", homeFolder, thingdirpb.PluginID)
-	assert.NoError(t, err)
-	err = hubconfig.LoadPluginConfig(hubConfig.ConfigFolder, thingdirpb.PluginID, &tdirConfig, nil)
+	configFile := path.Join(hubConfig.ConfigFolder, thingdirpb.PluginID+".yaml")
+	err := config.LoadYamlConfig(configFile, &tdirConfig, nil)
 
-	// hubConfig, err := hubconfig.LoadCommandlineConfig(homeFolder, thingdirpb.PluginID, &tdirConfig)
+	// hubConfig, err := config.LoadHubConfig("", homeFolder, thingdirpb.PluginID)
+	assert.NoError(t, err)
+	// err = config.LoadPluginConfig(hubConfig.ConfigFolder, thingdirpb.PluginID, &tdirConfig, nil)
+
+	// hubConfig, err := config.LoadCommandlineConfig(homeFolder, thingdirpb.PluginID, &tdirConfig)
 	assert.NoError(t, err)
 
-	tdirPB := thingdirpb.NewThingDirPB(tdirConfig, hubConfig)
+	tdirPB := thingdirpb.NewThingDirPB(tdirConfig, &hubConfig)
 	err = tdirPB.Start()
 	assert.NoError(t, err)
 
-	tdirClient := dirclient.NewDirClient(tdirConfig.DirAddress, tdirConfig.DirPort, caCertPath)
-	err = tdirClient.ConnectWithClientCert(pluginCertPath, pluginKeyPath)
+	dirHostPort := fmt.Sprintf("%s:%d", tdirConfig.DirAddress, tdirConfig.DirPort)
+	tdirClient := dirclient.NewDirClient(dirHostPort, hubConfig.CaCert)
+	err = tdirClient.ConnectWithClientCert(hubConfig.PluginCert)
 	assert.NoError(t, err)
 
 	// Publishing a TD should update the directory
-	mbusClient := hubclient.NewMqttHubPluginClient("testUpdateTD", hubConfig)
-	mbusClient.Connect()
-	require.NotNil(t, mbusClient)
+	mqttHostPort := fmt.Sprintf("%s:%d", hubConfig.MqttAddress, hubConfig.MqttPortCert)
+	mqttClient := mqttclient.NewMqttHubClient("testUpdateTD", hubConfig.CaCert)
+	mqttClient.ConnectWithClientCert(mqttHostPort, hubConfig.PluginCert)
+	require.NotNil(t, mqttClient)
 	td1 := td.CreateTD("thing1", vocab.DeviceTypeButton)
-	err = mbusClient.PublishTD("thing1", td1)
+	err = mqttClient.PublishTD("thing1", td1)
 	assert.NoError(t, err)
 
 	// update takes place in the background so wait a few msec

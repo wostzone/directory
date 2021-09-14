@@ -1,36 +1,39 @@
 package dirserver_test
 
 import (
+	"fmt"
 	"os"
 	"path"
+	"strings"
 	"testing"
 
 	"github.com/sirupsen/logrus"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	"github.com/wostzone/thingdir-go/pkg/dirclient"
-	"github.com/wostzone/thingdir-go/pkg/dirserver"
-	"github.com/wostzone/wostlib-go/pkg/certsetup"
-	"github.com/wostzone/wostlib-go/pkg/hubnet"
-	"github.com/wostzone/wostlib-go/pkg/td"
-	"github.com/wostzone/wostlib-go/pkg/vocab"
+	"github.com/wostzone/hubclient-go/pkg/td"
+	"github.com/wostzone/hubclient-go/pkg/testenv"
+	"github.com/wostzone/hubclient-go/pkg/tlsclient"
+	"github.com/wostzone/hubclient-go/pkg/vocab"
+	"github.com/wostzone/thingdir/pkg/dirclient"
+	"github.com/wostzone/thingdir/pkg/dirserver"
 )
 
 const testDirectoryPort = 9990
 const testDirectoryServiceInstanceID = "directory"
 const testServiceDiscoveryName = "thingdir"
+const serverAddress = "127.0.0.1"
 
-// These are set in TestMain
-var serverCertFolder string
-var serverCertPath string
-var serverKeyPath string
-var serverAddress string
+var serverHostPort = fmt.Sprintf("%s:%d", serverAddress, testDirectoryPort)
+
+var testCerts testenv.TestCerts
 
 var homeFolder string
-var caCertPath string
+
+// var caCertPath string
 var directoryServer *dirserver.DirectoryServer
-var pluginCertPath string
-var pluginKeyPath string
+
+// var pluginCertPath string
+// var pluginKeyPath string
 var storeFolder string
 
 // TD's for testing. Expect 2 sensors in this list
@@ -75,29 +78,19 @@ func authorizer(userID string, certOU string,
 // This uses the directory client in testing
 func TestMain(m *testing.M) {
 	logrus.Infof("------ TestMain of DirectoryServer ------")
-	serverAddress = hubnet.GetOutboundIP("").String()
-	hostnames := []string{serverAddress}
 
 	cwd, _ := os.Getwd()
 	homeFolder = path.Join(cwd, "../../test")
-	serverCertFolder = path.Join(homeFolder, "certs")
-	// certStoreFolder = path.Join(homeFolder, "certstore")
 	storeFolder = path.Join(homeFolder, "config")
 
-	// make sure the certificates are there
-	certsetup.CreateCertificateBundle(hostnames, serverCertFolder)
-	serverCertPath = path.Join(serverCertFolder, certsetup.HubCertFile)
-	serverKeyPath = path.Join(serverCertFolder, certsetup.HubKeyFile)
-	caCertPath = path.Join(serverCertFolder, certsetup.CaCertFile)
-	pluginCertPath = path.Join(serverCertFolder, certsetup.PluginCertFile)
-	pluginKeyPath = path.Join(serverCertFolder, certsetup.PluginKeyFile)
+	testCerts = testenv.CreateCertBundle()
 
 	directoryServer = dirserver.NewDirectoryServer(
 		testDirectoryServiceInstanceID,
 		storeFolder,
 		serverAddress, testDirectoryPort,
 		testServiceDiscoveryName,
-		serverCertPath, serverKeyPath, caCertPath,
+		testCerts.ServerCert, testCerts.CaCert,
 		authenticator,
 		authorizer)
 	directoryServer.Start()
@@ -116,19 +109,19 @@ func TestStartStop(t *testing.T) {
 		storeFolder,
 		serverAddress, testDirectoryPort+1,
 		testServiceDiscoveryName,
-		serverCertPath, serverKeyPath, caCertPath,
+		testCerts.ServerCert, testCerts.CaCert,
 		authenticator,
 		authorizer)
 	err := mydirserver.Start()
 	assert.NoError(t, err)
 
-	dirClient := dirclient.NewDirClient(serverAddress, testDirectoryPort, caCertPath)
+	dirClient := dirclient.NewDirClient(serverHostPort, testCerts.CaCert)
 
 	a := directoryServer.Address()
 	assert.Equal(t, serverAddress, a)
 
 	// Client start only succeeds if server is running
-	err = dirClient.ConnectWithClientCert(pluginCertPath, pluginKeyPath)
+	err = dirClient.ConnectWithClientCert(testCerts.PluginCert)
 	assert.NoError(t, err)
 
 	dirClient.Close()
@@ -140,9 +133,9 @@ func TestUpdate(t *testing.T) {
 	thingID1 := "thing1"
 	deviceType1 := vocab.DeviceTypeSensor
 
-	dirClient := dirclient.NewDirClient(serverAddress, testDirectoryPort, caCertPath)
+	dirClient := dirclient.NewDirClient(serverHostPort, testCerts.CaCert)
 	// Client start only succeeds if server is running
-	err := dirClient.ConnectWithClientCert(pluginCertPath, pluginKeyPath)
+	err := dirClient.ConnectWithClientCert(testCerts.PluginCert)
 	require.NoError(t, err)
 
 	// Create
@@ -158,12 +151,45 @@ func TestUpdate(t *testing.T) {
 	dirClient.Close()
 }
 
+func TestBadUpdate(t *testing.T) {
+	thingID1 := "thing1"
+
+	dirClient := dirclient.NewDirClient(serverHostPort, testCerts.CaCert)
+	// Client start only succeeds if server is running
+	err := dirClient.ConnectWithClientCert(testCerts.PluginCert)
+	require.NoError(t, err)
+
+	// Create
+	// td1 := td.CreateTD(thingID1, deviceType1)
+
+	err = dirClient.UpdateTD(thingID1, nil)
+	assert.Error(t, err)
+	dirClient.Close()
+
+	// use TLS client directly to circumvent type checking
+	badUpdate := "hello world"
+	tlsClient := tlsclient.NewTLSClient(serverHostPort, testCerts.CaCert)
+	err = tlsClient.ConnectWithClientCert(testCerts.PluginCert)
+	assert.NoError(t, err)
+	patchPath := strings.Replace(dirclient.RouteThingID, "{thingID}", thingID1, 1)
+	_, err = tlsClient.Put(patchPath, badUpdate)
+	assert.Error(t, err)
+
+	// test incorrect command
+	url := fmt.Sprintf("https://%s%s", serverHostPort, patchPath)
+	_, err = tlsClient.Invoke("BADMETHOD", url, badUpdate)
+	assert.Error(t, err)
+
+	tlsClient.Close()
+
+}
+
 func TestPatch(t *testing.T) {
 
-	dirClient := dirclient.NewDirClient(serverAddress, testDirectoryPort, caCertPath)
+	dirClient := dirclient.NewDirClient(serverHostPort, testCerts.CaCert)
 
 	// Client start only succeeds if server is running
-	err := dirClient.ConnectWithClientCert(pluginCertPath, pluginKeyPath)
+	err := dirClient.ConnectWithClientCert(testCerts.PluginCert)
 	require.NoError(t, err)
 
 	AddTds(dirClient)
@@ -194,10 +220,10 @@ func TestPatch(t *testing.T) {
 
 func TestBadPatch(t *testing.T) {
 
-	dirClient := dirclient.NewDirClient(serverAddress, testDirectoryPort, caCertPath)
+	dirClient := dirclient.NewDirClient(serverHostPort, testCerts.CaCert)
 
 	// Client start only succeeds if server is running
-	err := dirClient.ConnectWithClientCert(pluginCertPath, pluginKeyPath)
+	err := dirClient.ConnectWithClientCert(testCerts.PluginCert)
 	require.NoError(t, err)
 
 	AddTds(dirClient)
@@ -209,17 +235,27 @@ func TestBadPatch(t *testing.T) {
 	assert.Error(t, err)
 	dirClient.Close()
 
+	// use TLS client directly to circumvent type checking
+	badPatch := "hello world"
+	tlsClient := tlsclient.NewTLSClient(serverHostPort, testCerts.CaCert)
+	err = tlsClient.ConnectWithClientCert(testCerts.PluginCert)
+	assert.NoError(t, err)
+	patchPath := strings.Replace(dirclient.RouteThingID, "{thingID}", thingID1, 1)
+	_, err = tlsClient.Patch(patchPath, badPatch)
+	assert.Error(t, err)
+
+	tlsClient.Close()
 }
 
 func TestQueryAndList(t *testing.T) {
 	const query = `$[?(@['@type']=='sensor')]`
 
-	dirClient := dirclient.NewDirClient(serverAddress, testDirectoryPort, caCertPath)
-	dirClient.ConnectWithClientCert(pluginCertPath, pluginKeyPath)
+	dirClient := dirclient.NewDirClient(serverHostPort, testCerts.CaCert)
+	err := dirClient.ConnectWithClientCert(testCerts.PluginCert)
 	AddTds(dirClient)
 
 	// Client start only succeeds if server is running
-	err := dirClient.ConnectWithClientCert(pluginCertPath, pluginKeyPath)
+	// err = dirClient.ConnectWithClientCert(testCerts.PluginCert)
 	assert.NoError(t, err)
 
 	// expect 2 sensors
@@ -236,12 +272,12 @@ func TestQueryAndList(t *testing.T) {
 }
 
 func TestDelete(t *testing.T) {
-	dirClient := dirclient.NewDirClient(serverAddress, testDirectoryPort, caCertPath)
-	dirClient.ConnectWithClientCert(pluginCertPath, pluginKeyPath)
+	dirClient := dirclient.NewDirClient(serverHostPort, testCerts.CaCert)
+	err := dirClient.ConnectWithClientCert(testCerts.PluginCert)
 	AddTds(dirClient)
 
 	// Client start only succeeds if server is running
-	err := dirClient.ConnectWithClientCert(pluginCertPath, pluginKeyPath)
+	// err := dirClient.ConnectWithClientCert(testCerts.PluginCert)
 	assert.NoError(t, err)
 
 	// expect 4 items
@@ -266,10 +302,11 @@ func TestDelete(t *testing.T) {
 func TestBadRequest(t *testing.T) {
 	const query = `$[?(badquery@['@type']=='sensor')]`
 
-	dirClient := dirclient.NewDirClient(serverAddress, testDirectoryPort, caCertPath)
-	dirClient.ConnectWithClientCert(pluginCertPath, pluginKeyPath)
+	dirClient := dirclient.NewDirClient(serverHostPort, testCerts.CaCert)
+	err := dirClient.ConnectWithClientCert(testCerts.PluginCert)
+	require.NoError(t, err)
 
-	_, err := dirClient.QueryTDs(query, 0, 99999)
+	_, err = dirClient.QueryTDs(query, 0, 99999)
 	assert.Error(t, err)
 
 	// test list
@@ -284,7 +321,7 @@ func TestBadRequest(t *testing.T) {
 func TestNotAuthenticated(t *testing.T) {
 	loginID := "user1"
 	password := "pass1"
-	dirClient := dirclient.NewDirClient(serverAddress, testDirectoryPort, caCertPath)
+	dirClient := dirclient.NewDirClient(serverHostPort, testCerts.CaCert)
 
 	authenticateResult = false
 
@@ -301,7 +338,7 @@ func TestNotAuthorized(t *testing.T) {
 	thingID1 := tdDefs[0].id
 	loginID := "user1"
 	password := "pass1"
-	dirClient := dirclient.NewDirClient(serverAddress, testDirectoryPort, caCertPath)
+	dirClient := dirclient.NewDirClient(serverHostPort, testCerts.CaCert)
 	td1 := td.CreateTD(thingID1, vocab.DeviceTypeSensor)
 	td.AddTDProperty(td1, "name", td.CreateProperty("name1", "just a name", vocab.PropertyTypeAttr))
 

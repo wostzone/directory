@@ -6,8 +6,8 @@ import (
 	"net/http"
 
 	"github.com/sirupsen/logrus"
-	"github.com/wostzone/thingdir-go/pkg/dirclient"
-	"github.com/wostzone/wostlib-go/pkg/certsetup"
+	"github.com/wostzone/hubserve-go/pkg/certsetup"
+	"github.com/wostzone/thingdir/pkg/dirclient"
 )
 
 // ServeThings lists or queries available TDs

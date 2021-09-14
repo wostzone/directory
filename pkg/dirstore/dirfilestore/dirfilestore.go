@@ -23,7 +23,7 @@ import (
 	"github.com/imdario/mergo"
 	"github.com/ohler55/ojg/jp"
 	"github.com/sirupsen/logrus"
-	"github.com/wostzone/wostlib-go/pkg/td"
+	"github.com/wostzone/hubclient-go/pkg/td"
 )
 
 // Max nr of items to return in list
@@ -215,11 +215,14 @@ func (store *DirFileStore) Patch(id string, src map[string]interface{}) error {
 	defer store.mutex.Unlock()
 	logrus.Infof("DirFileStore.Patch: ID=%s", id)
 
+	if src == nil || id == "" {
+		err := fmt.Errorf("DirFileStore.Patch: id='%s' parameter error", id)
+		return err
+	}
 	// the new doc is merged into the original
 	dest := store.docs[id].(map[string]interface{})
 
-	err := mergo.Map(&dest, src, mergo.WithOverride)
-	if err != nil {
+	if err := mergo.Map(&dest, src, mergo.WithOverride); err != nil {
 		return err
 	}
 
@@ -283,13 +286,12 @@ func (store *DirFileStore) Query(jsonPath string, offset int, limit int,
 }
 
 // Remove a document from the store
-// Succeeds if the document doesn't exist
-func (store *DirFileStore) Remove(id string) error {
+// Also succeeds if the document doesn't exist
+func (store *DirFileStore) Remove(id string) {
 	store.mutex.Lock()
 	defer store.mutex.Unlock()
 	delete(store.docs, id)
 	store.updateCount++
-	return nil
 }
 
 // Replace a document
@@ -297,6 +299,11 @@ func (store *DirFileStore) Remove(id string) error {
 func (store *DirFileStore) Replace(id string, document map[string]interface{}) error {
 	store.mutex.Lock()
 	defer store.mutex.Unlock()
+
+	if document == nil || id == "" {
+		err := fmt.Errorf("DirFileStore.Replace: id='%s' parameter error", id)
+		return err
+	}
 	store.docs[id] = document
 	store.updateCount++
 	return nil

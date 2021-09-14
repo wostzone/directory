@@ -9,7 +9,7 @@
 
 # Directory service listening address. The default is that of the mqtt server.
 # This address must match the address in the server certificate otherwise clients won't be able to connect.
-#dirAddress: "localhost"
+#dirAddress: "127.0.0.1"
 
 # Directory service HTTPS listening port. Use the plugin default port by default.
 # The default port is hard coded as  in thingdir-go/pkg/dirclient/DirClient.go:DefaultPort

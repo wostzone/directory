@@ -34,7 +34,7 @@ type IDirStore interface {
 
 	// Remove a document
 	// Succeeds if the document doesn't exist
-	Remove(id string) error
+	Remove(id string)
 
 	// Replace a document
 	// The document does not have to exist
